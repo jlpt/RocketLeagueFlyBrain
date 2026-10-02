@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flybrain-rl"
+version = "0.1.0"
+description = "A Rocket League bot driven by the Drosophila male CNS connectome, trained in RocketSim"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT (code); connectome data CC-BY 4.0 (Janelia FlyEM / Google)" }
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "pandas>=2.0",
+  "pyarrow>=12",
+  "torch>=2.1",
+  "rocketsim>=2.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+flybrain = "flybrain.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["flybrain*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

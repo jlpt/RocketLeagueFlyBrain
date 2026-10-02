@@ -1,0 +1,376 @@
+<title>FlyBrain Replay Booth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: broadcast booth. 3D pitch as the hero with a scorebug on top, transport under it,
+   and a lab-bench side panel showing the fly's descending-neuron raster. Single dark look by choice. */
+:root {
+  --night: #0d131a;       /* booth background */
+  --panel: #141c25;       /* raised surfaces */
+  --line: #273444;        /* hairlines */
+  --text: #e4ebf2;
+  --muted: #8d9cae;
+  --blue: #3f8dff;        /* blue team */
+  --orange: #ff8b2e;      /* orange team */
+  --specimen: #f3c64b;    /* fly / neural data */
+  --display: "Saira Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { background: var(--night); color: var(--text); }
+body { font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.app { max-width: 1320px; margin: 0 auto; padding-inline: 16px; padding-block: 16px 28px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+header.top { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 20px; }
+.brand { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spacing: .02em; text-transform: uppercase; }
+.brand span { color: var(--specimen); }
+.sub { color: var(--muted); font-size: 13px; }
+.matchups { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font: 500 13px/1 var(--body); color: var(--text); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 999px; padding: 9px 14px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+.chip[aria-pressed="true"] { border-color: var(--specimen); box-shadow: inset 0 0 0 1px var(--specimen); }
+.chip .s { font-family: var(--mono); color: var(--muted); }
+.chip:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--specimen); outline-offset: 2px; }
+.left { min-width: 0; display: grid; gap: 10px; }
+.stage { position: relative; aspect-ratio: 16 / 9; max-width: 100%; background: #0a0f15; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.stage canvas { display: block; width: 100%; height: 100%; }
+.scorebug { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: grid;
+  grid-template-columns: auto 44px 74px 44px auto; align-items: stretch; font-family: var(--display); text-transform: uppercase;
+  box-shadow: 0 4px 16px rgba(0,0,0,.45); border-radius: 4px; overflow: hidden; max-width: calc(100% - 20px); }
+.scorebug > div { display: flex; align-items: center; justify-content: center; padding: 4px 10px; white-space: nowrap; }
+.sb-name { font-weight: 600; font-size: 15px; letter-spacing: .04em; overflow: hidden; text-overflow: ellipsis; max-width: 22vw; }
+.sb-blue { background: var(--blue); color: #fff; }
+.sb-orange { background: var(--orange); color: #1b0f05; }
+.sb-score { background: #0b1016; color: var(--text); font-weight: 700; font-size: 24px; font-variant-numeric: tabular-nums; }
+.sb-clock { background: #1d2733; color: var(--text); font-family: var(--mono); font-size: 15px; font-variant-numeric: tabular-nums; }
+.goal-banner { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.goal-banner b { font-family: var(--display); font-weight: 700; font-size: clamp(40px, 9vw, 110px); letter-spacing: .06em;
+  text-transform: uppercase; color: #fff; text-shadow: 0 6px 30px rgba(0,0,0,.6); animation: pop .9s ease-out both; }
+@keyframes pop { from { transform: scale(.6); opacity: 0 } 40% { transform: scale(1.06); opacity: 1 } to { transform: scale(1) } }
+.cams { position: absolute; bottom: 10px; right: 10px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.cams button { font: 500 12px/1 var(--body); color: var(--text); background: rgba(13,19,26,.78); border: 1px solid var(--line);
+  border-radius: 4px; padding: 7px 10px; cursor: pointer; }
+.cams button[aria-pressed="true"] { border-color: var(--specimen); color: var(--specimen); }
+.transport { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 12px; align-items: center;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+.transport button, .transport select { font: 500 13px/1 var(--body); color: var(--text); background: #1c2632;
+  border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; cursor: pointer; }
+#play { min-width: 74px; }
+.scrub { position: relative; height: 28px; display: flex; align-items: center; min-width: 0; }
+.scrub input { width: 100%; accent-color: var(--specimen); margin: 0; }
+.ticks { position: absolute; inset: 0; pointer-events: none; }
+.ticks i { position: absolute; top: 2px; width: 3px; height: 8px; border-radius: 1px; transform: translateX(-1px); }
+.time { font-family: var(--mono); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+aside { min-width: 0; display: grid; gap: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px; }
+aside h2 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 18px; letter-spacing: .05em; text-transform: uppercase; }
+aside h2 small { display: block; font-family: var(--body); font-size: 12px; letter-spacing: 0; text-transform: none; color: var(--muted); font-weight: 400; }
+#raster { width: 100%; height: 180px; display: block; background: #0b1016; border: 1px solid var(--line); border-radius: 4px; image-rendering: pixelated; }
+.dn-names { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.dn-names li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dn-names li b { color: var(--specimen); font-weight: 500; }
+.ctl { display: grid; gap: 7px; }
+.ctl-row { display: grid; grid-template-columns: 70px minmax(0, 1fr) 42px; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.ctl-row .v { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+.meter { position: relative; height: 8px; background: #0b1016; border: 1px solid var(--line); border-radius: 2px; overflow: hidden; }
+.meter i { position: absolute; top: 0; bottom: 0; background: var(--specimen); }
+.meter.center::after { content: ""; position: absolute; left: 50%; top: -1px; bottom: -1px; width: 1px; background: var(--line); }
+.lamp { display: inline-block; vertical-align: middle; width: 10px; height: 10px; border-radius: 50%; background: #1c2632; border: 1px solid var(--line); }
+.lamp.on { background: var(--specimen); border-color: var(--specimen); box-shadow: 0 0 8px var(--specimen); }
+.facts { display: grid; gap: 6px; margin: 0; font-size: 13px; }
+.facts div { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; font-family: var(--mono); text-align: right; }
+.note { font-size: 12px; color: var(--muted); margin: 0; }
+.empty { font-size: 13px; color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; padding: 12px; }
+@media (max-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .transport { grid-template-columns: auto auto minmax(0, 1fr); }
+  .transport .time { grid-column: 1 / -1; }
+  .sb-name { max-width: 26vw; font-size: 13px; }
+  .scorebug { grid-template-columns: auto 34px 62px 34px auto; }
+  .sb-score { font-size: 20px; }
+}
+@media (max-width: 560px) {
+  .sb-name { display: none; }
+  .scorebug { grid-template-columns: 40px 64px 40px; top: 8px; }
+  #scoreBlue { background: var(--blue); color: #fff; }
+  #scoreOrange { background: var(--orange); color: #1b0f05; }
+  .stage { overflow: visible; margin-bottom: 44px; }
+  .cams { top: calc(100% + 8px); bottom: auto; right: 0; left: 0; justify-content: flex-start; }
+  .cams button { background: var(--panel); }
+}
+@media (prefers-reduced-motion: reduce) { .goal-banner b { animation: none; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">Fly<span>Brain</span> replay booth</div>
+    <div class="sub" id="sub">Rocket League matches simulated in RocketSim. Blue car: driven by the <i>Drosophila</i> male CNS connectome.</div>
+  </header>
+  <nav class="matchups" id="matchups" aria-label="Matchups"></nav>
+  <div class="left">
+    <div class="stage" id="stage">
+      <canvas id="gl"></canvas>
+      <div class="scorebug" aria-live="polite">
+        <div class="sb-name sb-blue" id="nameBlue">Blue</div>
+        <div class="sb-score" id="scoreBlue">0</div>
+        <div class="sb-clock" id="clock">0:00</div>
+        <div class="sb-score" id="scoreOrange">0</div>
+        <div class="sb-name sb-orange" id="nameOrange">Orange</div>
+      </div>
+      <div class="goal-banner" id="goalBanner" hidden><b id="goalText">Goal</b></div>
+      <div class="cams" role="group" aria-label="Camera">
+        <button id="cam-chase" aria-pressed="true">Blue car cam</button>
+        <button id="cam-broadcast" aria-pressed="false">Broadcast</button>
+        <button id="cam-top" aria-pressed="false">Overhead</button>
+      </div>
+    </div>
+    <div class="transport">
+      <button id="play" aria-label="Play or pause">Pause</button>
+      <select id="speed" aria-label="Playback speed">
+        <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+      </select>
+      <div class="scrub"><input id="scrub" type="range" min="0" max="100" value="0" step="1" aria-label="Seek"><div class="ticks" id="ticks"></div></div>
+      <div class="time" id="time">0:00 / 0:00</div>
+    </div>
+  </div>
+  <aside>
+    <h2>Descending neurons<small>Most active brain→body neurons of the blue fly, last 4 s. Brighter = higher firing rate.</small></h2>
+    <canvas id="raster" width="120" height="48"></canvas>
+    <div id="rasterEmpty" class="empty" hidden>This car is a scripted bot, so there is no neural activity to show.</div>
+    <ul class="dn-names" id="dnNames"></ul>
+    <h2>Blue car controls</h2>
+    <div class="ctl">
+      <div class="ctl-row"><span>Throttle</span><div class="meter center"><i id="m-thr"></i></div><span class="v" id="v-thr">0</span></div>
+      <div class="ctl-row"><span>Steer</span><div class="meter center"><i id="m-str"></i></div><span class="v" id="v-str">0</span></div>
+      <div class="ctl-row"><span>Boost</span><div class="meter"><i id="m-bst"></i></div><span class="v" id="v-bst">0</span></div>
+      <div class="ctl-row"><span>Jump</span><div><span class="lamp" id="l-jmp"></span></div><span class="v"></span></div>
+      <div class="ctl-row"><span>Boosting</span><div><span class="lamp" id="l-boost"></span></div><span class="v"></span></div>
+    </div>
+    <dl class="facts" id="facts"></dl>
+    <p class="note" id="note"></p>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const DATA = /*__REPLAY_DATA__*/null;
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const css = getComputedStyle(document.documentElement);
+  const tok = (n) => css.getPropertyValue(n).trim();
+  const COL = { blue: tok('--blue'), orange: tok('--orange'), spec: tok('--specimen'), line: tok('--line'), night: tok('--night') };
+  const replays = (DATA && DATA.replays) || [];
+  const meta = (DATA && DATA.meta) || {};
+  if (!replays.length) { $('sub').textContent = 'No replays were embedded in this page.'; return; }
+
+  // ---------------------------------------------------------------- three.js scene
+  const canvas = $('gl');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a0f15);
+  scene.fog = new THREE.Fog(0x0a0f15, 14000, 30000);
+  const camera = new THREE.PerspectiveCamera(55, 16 / 9, 20, 40000);
+  scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x0b1a14, 0.75));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.7); sun.position.set(-3000, 8000, 2000); scene.add(sun);
+
+  // RL world (x, y, z-up, left-handed) -> three (x, y-up, z): (x, z, y)
+  const V = (x, y, z) => new THREE.Vector3(x, z, y);
+
+  // pitch
+  const field = new THREE.Mesh(new THREE.PlaneGeometry(8192, 10240), new THREE.MeshStandardMaterial({ color: 0x16392f, roughness: 1 }));
+  field.rotation.x = -Math.PI / 2; scene.add(field);
+  const tint = (y0, y1, color) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(8192, Math.abs(y1 - y0)),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.07 })); m.rotation.x = -Math.PI / 2; m.position.set(0, 1, (y0 + y1) / 2); scene.add(m); };
+  tint(-5120, 0, COL.blue); tint(0, 5120, COL.orange);
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x9fc9b8, transparent: true, opacity: 0.45 });
+  const addLine = (pts, mat) => scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat || lineMat));
+  addLine([V(-4096, 0, 2), V(4096, 0, 2)]);
+  { const pts = []; for (let i = 0; i <= 64; i++) { const a = i / 64 * Math.PI * 2; pts.push(V(Math.cos(a) * 1000, Math.sin(a) * 1000, 2)); } addLine(pts); }
+  for (const s of [-1, 1]) addLine([V(-1800, s * 5120, 2), V(-1800, s * 3800, 2), V(1800, s * 3800, 2), V(1800, s * 5120, 2)]);
+
+  // walls: same octagon as the generated collision mesh (|x|+|y| = 8064 corners)
+  const poly = [[4096, -3968], [4096, 3968], [2944, 5120], [-2944, 5120], [-4096, 3968], [-4096, -3968], [-2944, -5120], [2944, -5120]];
+  const wallMat = new THREE.LineBasicMaterial({ color: 0x6d8aa8, transparent: true, opacity: 0.55 });
+  for (const z of [0, 2044]) addLine(poly.concat([poly[0]]).map(p => V(p[0], p[1], z)), wallMat);
+  for (const p of poly) addLine([V(p[0], p[1], 0), V(p[0], p[1], 2044)], wallMat);
+  { const shape = []; const g = new THREE.BufferGeometry(); const pos = [];
+    for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length];
+      const q = [V(a[0], a[1], 0), V(b[0], b[1], 0), V(b[0], b[1], 2044), V(a[0], a[1], 2044)];
+      for (const k of [0, 1, 2, 0, 2, 3]) pos.push(q[k].x, q[k].y, q[k].z); }
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    scene.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x5a7896, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false }))); }
+  // goals
+  for (const [s, color] of [[-1, COL.blue], [1, COL.orange]]) {
+    const geo = new THREE.BoxGeometry(1786, 642.8, 880);
+    const box = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.16, depthWrite: false }));
+    box.position.copy(V(0, s * (5120 + 440), 321.4)); scene.add(box);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color }));
+    edges.position.copy(box.position); scene.add(edges);
+  }
+  // boost pads
+  for (const p of (meta.pads || [])) {
+    const big = p[2] > 0; const m = new THREE.Mesh(new THREE.CircleGeometry(big ? 160 : 70, 24),
+      new THREE.MeshBasicMaterial({ color: COL.spec, transparent: true, opacity: big ? 0.55 : 0.3 }));
+    m.rotation.x = -Math.PI / 2; m.position.copy(V(p[0], p[1], 3)); scene.add(m);
+  }
+
+  // ball + its floor shadow + trail
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(91.25, 32, 18), new THREE.MeshStandardMaterial({ color: 0xe9eef3, roughness: 0.45, emissive: 0x222831 }));
+  scene.add(ball);
+  const shadow = new THREE.Mesh(new THREE.CircleGeometry(95, 24), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 }));
+  shadow.rotation.x = -Math.PI / 2; scene.add(shadow);
+  const TRAIL = 24; const trailGeo = new THREE.BufferGeometry(); trailGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(TRAIL * 3), 3));
+  scene.add(new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 })));
+
+  function makeCar(color) {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(118, 30, 84), new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.2 }));
+    body.position.set(14, 12, 0); g.add(body);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(56, 22, 70), new THREE.MeshStandardMaterial({ color: 0x1b2633, roughness: 0.3 }));
+    cab.position.set(-4, 36, 0); g.add(cab);
+    const wheelGeo = new THREE.CylinderGeometry(15, 15, 12, 14); wheelGeo.rotateX(Math.PI / 2);
+    const wm = new THREE.MeshStandardMaterial({ color: 0x0b0f14 });
+    for (const [x, z] of [[50, 40], [50, -40], [-28, 40], [-28, -40]]) { const w = new THREE.Mesh(wheelGeo, wm); w.position.set(x, -4, z); g.add(w); }
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(16, 110, 12), new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.85 }));
+    flame.rotation.z = Math.PI / 2; flame.position.set(-100, 12, 0); flame.visible = false; g.add(flame); g.userData.flame = flame;
+    g.scale.setScalar(1.7);   // drawn larger than life so the cars read at broadcast distance
+    scene.add(g); return g;
+  }
+  const cars = [makeCar(COL.blue), makeCar(COL.orange)];
+  function makeMarker(color, label) {
+    const grp = new THREE.Group();
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(55, 110, 4), new THREE.MeshBasicMaterial({ color }));
+    cone.rotation.x = Math.PI; grp.add(cone);
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 96; const cx = cv.getContext('2d');
+    cx.font = '700 64px "Saira Condensed", "Arial Narrow", sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.lineWidth = 10; cx.strokeStyle = 'rgba(0,0,0,0.75)'; cx.strokeText(label, 128, 50); cx.fillStyle = color; cx.fillText(label, 128, 50);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false, transparent: true }));
+    spr.scale.set(420, 158, 1); spr.position.y = 170; grp.add(spr);
+    scene.add(grp); return { grp, spr, cv, cx, color };
+  }
+  const markers = [makeMarker(COL.blue, 'BLUE'), makeMarker(COL.orange, 'ORANGE')];
+  function setMarkerLabel(m, label) { const cx = m.cx; cx.clearRect(0, 0, 256, 96); cx.lineWidth = 10;
+    cx.strokeStyle = 'rgba(0,0,0,0.75)'; cx.strokeText(label, 128, 50); cx.fillStyle = m.color; cx.fillText(label, 128, 50); m.spr.material.map.needsUpdate = true; }
+  const shortName = (n) => /fly/i.test(n) ? 'FLY' : (/teacher/i.test(n) ? 'TEACHER' : (/chase/i.test(n) ? 'CHASER' : n.split(' ')[0].toUpperCase()));
+
+  // ---------------------------------------------------------------- playback state
+  let R = null, frame = 0, playing = true, speed = 1, camMode = 'chase', lastGoalShown = -1;
+  const camPos = new THREE.Vector3(-5600, 2000, 0), camLook = new THREE.Vector3();
+  const fmt = (s) => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+
+  function vec3(arr, i, s) { return [arr[3 * i] * s, arr[3 * i + 1] * s, arr[3 * i + 2] * s]; }
+  function lerp3(arr, f, s) { const i = Math.floor(f), j = Math.min(i + 1, R.frames - 1), t = f - i;
+    const a = vec3(arr, i, s), b = vec3(arr, j, s); return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+
+  function setCar(car, c, f) {
+    const p = lerp3(c.pos, f, 1), fw = lerp3(c.fwd, f, 0.01), up = lerp3(c.up, f, 0.01);
+    car.position.copy(V(p[0], p[1], p[2]));
+    const F = V(fw[0], fw[1], fw[2]).normalize(); let U = V(up[0], up[1], up[2]);
+    U.sub(F.clone().multiplyScalar(U.dot(F))).normalize();
+    const Rt = new THREE.Vector3().crossVectors(F, U).normalize();
+    car.setRotationFromMatrix(new THREE.Matrix4().makeBasis(F, U, Rt));
+    const i = Math.round(f); car.userData.flame.visible = c.ctrl[4 * i + 3] > 50 && c.boost[i] > 0;
+  }
+
+  function scoreAt(f) { let b = 0, o = 0; for (const g of R.goals) if (g.frame <= f) { if (g.team === 0) b++; else o++; } return [b, o]; }
+
+  function load(k) {
+    R = replays[k]; frame = 0; lastGoalShown = -1;
+    document.querySelectorAll('.chip').forEach((el, i) => el.setAttribute('aria-pressed', String(i === k)));
+    $('nameBlue').textContent = R.blue; $('nameOrange').textContent = R.orange;
+    setMarkerLabel(markers[0], shortName(R.blue)); setMarkerLabel(markers[1], shortName(R.orange));
+    const sc = $('scrub'); sc.max = R.frames - 1;
+    const ticks = $('ticks'); ticks.innerHTML = '';
+    for (const g of R.goals) { const t = document.createElement('i'); t.style.left = (g.frame / (R.frames - 1) * 100) + '%';
+      t.style.background = g.team === 0 ? COL.blue : COL.orange; t.title = 'Goal ' + (g.team === 0 ? R.blue : R.orange) + ' at ' + fmt(g.frame / R.fps); ticks.appendChild(t); }
+    const hasRaster = !!(R.raster && R.raster.length);
+    $('raster').hidden = !hasRaster; $('rasterEmpty').hidden = hasRaster;
+    const names = $('dnNames'); names.innerHTML = '';
+    if (hasRaster && R.raster_names) {
+      const seen = new Set(); const uniq = R.raster_names.filter(n => !seen.has(n) && seen.add(n)).slice(0, 8);
+      for (const n of uniq) { const li = document.createElement('li'); li.innerHTML = '<b>' + n + '</b>' + (meta.dn_notes && meta.dn_notes[n] ? ' ' + meta.dn_notes[n] : ''); names.appendChild(li); }
+    }
+    const facts = $('facts'); facts.innerHTML = '';
+    const rows = [['Final score', R.score[0] + ' – ' + R.score[1]], ['Match length', fmt(R.frames / R.fps)]];
+    for (const [k2, v] of (R.facts || []).concat(meta.facts || [])) rows.push([k2, v]);
+    for (const [k2, v] of rows) { const d = document.createElement('div'); d.innerHTML = '<dt></dt><dd></dd>'; d.firstChild.textContent = k2; d.lastChild.textContent = v; facts.appendChild(d); }
+    $('note').textContent = meta.note || '';
+  }
+
+  const chips = $('matchups');
+  replays.forEach((r, k) => { const b = document.createElement('button'); b.className = 'chip'; b.type = 'button';
+    b.innerHTML = '<span></span><span class="s"></span>'; b.firstChild.textContent = r.title; b.lastChild.textContent = r.score[0] + '–' + r.score[1];
+    b.addEventListener('click', () => load(k)); chips.appendChild(b); });
+
+  // raster
+  const rc = $('raster'), rctx = rc.getContext('2d'); const img = rctx.createImageData(120, 48);
+  const sp = [0xf3, 0xc6, 0x4b];
+  function drawRaster(f) {
+    if (!R.raster) return; const n = R.raster[0].length; const cur = Math.floor(f);
+    for (let c = 0; c < 120; c++) { const fr = cur - (119 - c); const row = fr >= 0 ? R.raster[fr] : null;
+      for (let r = 0; r < 48; r++) { const v = row && r < n ? (row.charCodeAt(r) - 48) / 9 : 0; const o = 4 * (r * 120 + c);
+        img.data[o] = 11 + (sp[0] - 11) * v; img.data[o + 1] = 16 + (sp[1] - 16) * v; img.data[o + 2] = 22 + (sp[2] - 22) * v; img.data[o + 3] = 255; } }
+    rctx.putImageData(img, 0, 0);
+  }
+
+  function setMeter(id, v, centered) { const m = $(id);
+    if (centered) { const w = Math.abs(v) * 50; m.style.left = (v >= 0 ? 50 : 50 - w) + '%'; m.style.width = w + '%'; }
+    else { m.style.left = '0'; m.style.width = Math.max(0, Math.min(100, v * 100)) + '%'; } }
+
+  function updateCamera(dt) {
+    const b = ball.position; const target = new THREE.Vector3(); const look = new THREE.Vector3();
+    if (camMode === 'top') { target.set(0, 12500, 1); look.set(0, 0, 0); camera.fov = 52; }
+    else if (camMode === 'chase') {
+      const c = cars[0].position; const dir = new THREE.Vector3(b.x - c.x, 0, b.z - c.z); if (dir.lengthSq() < 1) dir.set(0, 0, 1); dir.normalize();
+      target.copy(c).addScaledVector(dir, -900).add(new THREE.Vector3(0, 420, 0)); look.copy(b).lerp(c, 0.35); camera.fov = 68;
+    } else { target.set(-4800, 1800, b.z * 0.8); look.set(b.x * 0.55, 150, b.z * 0.92); camera.fov = 55; }
+    const k = 1 - Math.exp(-dt * (camMode === 'chase' ? 6 : 3));
+    camPos.lerp(target, k); camLook.lerp(look, k); camera.position.copy(camPos); camera.lookAt(camLook); camera.updateProjectionMatrix();
+  }
+
+  function render(f, dt) {
+    const bp = lerp3(R.ball, f, 1); ball.position.copy(V(bp[0], bp[1], bp[2])); shadow.position.copy(V(bp[0], bp[1], 4));
+    shadow.material.opacity = Math.max(0.08, 0.38 - bp[2] / 6000);
+    const tp = trailGeo.attributes.position; for (let i = 0; i < TRAIL; i++) { const fi = Math.max(0, Math.floor(f) - i); const p = vec3(R.ball, fi, 1); const w = V(p[0], p[1], p[2]); tp.setXYZ(i, w.x, w.y, w.z); } tp.needsUpdate = true;
+    R.cars.forEach((c, i) => { setCar(cars[i], c, f); markers[i].grp.position.copy(cars[i].position).add(new THREE.Vector3(0, 260, 0)); });
+    updateCamera(dt);
+    renderer.render(scene, camera);
+    const i = Math.round(f); const s = scoreAt(i);
+    $('scoreBlue').textContent = s[0]; $('scoreOrange').textContent = s[1];
+    $('clock').textContent = fmt(i / R.fps); $('time').textContent = fmt(i / R.fps) + ' / ' + fmt(R.frames / R.fps);
+    $('scrub').value = i;
+    const c0 = R.cars[0]; const thr = c0.ctrl[4 * i] / 100, str = c0.ctrl[4 * i + 1] / 100;
+    setMeter('m-thr', thr, true); setMeter('m-str', str, true); setMeter('m-bst', c0.boost[i] / 100, false);
+    $('v-thr').textContent = thr.toFixed(2); $('v-str').textContent = str.toFixed(2); $('v-bst').textContent = c0.boost[i];
+    $('l-jmp').classList.toggle('on', c0.ctrl[4 * i + 2] > 50); $('l-boost').classList.toggle('on', c0.ctrl[4 * i + 3] > 50 && c0.boost[i] > 0);
+    drawRaster(f);
+    for (const g of R.goals) if (g.frame <= i && g.frame > i - 3 && lastGoalShown !== g.frame && playing) { lastGoalShown = g.frame; showGoal(g); }
+  }
+
+  let bannerTimer = null;
+  function showGoal(g) { const b = $('goalBanner'); $('goalText').textContent = 'Goal ' + (g.team === 0 ? R.blue : R.orange);
+    $('goalText').style.color = g.team === 0 ? COL.blue : COL.orange; b.hidden = false; b.firstElementChild.style.animation = 'none'; void b.offsetWidth; b.firstElementChild.style.animation = '';
+    clearTimeout(bannerTimer); bannerTimer = setTimeout(() => { b.hidden = true; }, 1600); }
+
+  function resize() { const st = $('stage'); const w = st.clientWidth, h = st.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  window.addEventListener('resize', resize);
+
+  $('play').addEventListener('click', () => { playing = !playing; $('play').textContent = playing ? 'Pause' : 'Play'; if (playing && frame >= R.frames - 1) frame = 0; });
+  $('speed').addEventListener('change', (e) => { speed = parseFloat(e.target.value); });
+  $('scrub').addEventListener('input', (e) => { frame = parseFloat(e.target.value); lastGoalShown = -1; });
+  for (const m of ['broadcast', 'chase', 'top']) $('cam-' + m).addEventListener('click', () => { camMode = m;
+    for (const n of ['broadcast', 'chase', 'top']) $('cam-' + n).setAttribute('aria-pressed', String(n === m)); });
+
+  load(0); resize();
+  let last = performance.now();
+  function tick(now) { const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    if (playing) { frame += dt * R.fps * speed; if (frame >= R.frames - 1) { frame = R.frames - 1; playing = false; $('play').textContent = 'Play'; } }
+    render(frame, dt); requestAnimationFrame(tick); }
+  render(0, 1); requestAnimationFrame(tick);
+})();
+</script>

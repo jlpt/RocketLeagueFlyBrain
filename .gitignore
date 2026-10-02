@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+data/
+runs/*
+!runs/README.md
+collision_meshes/
+*.npz
+!checkpoints/*.npz
+.venv/
