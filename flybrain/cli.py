@@ -88,6 +88,21 @@ def cmd_train_es(args):
     run_es(brain, graph, cfg, args.out, resume=args.resume)
 
 
+def cmd_positions(args):
+    from .connectome.positions import add_positions
+    add_positions(args.graph, args.raw_dir)
+    print(f"added soma positions to {args.graph}")
+
+
+def cmd_train_hyperneat(args):
+    import torch
+    from .train.hyperneat import HyperNEATConfig, run_hyperneat
+    torch.set_num_threads(args.threads)
+    graph = _load_graph(args.graph)
+    brain, _ = _load_brain(args, graph)
+    run_hyperneat(brain, graph, _dc_from_args(HyperNEATConfig, args), args.out, resume=not args.fresh)
+
+
 def cmd_eval(args):
     from .eval.evaluate import evaluate
     graph = _load_graph(args.graph)
@@ -150,6 +165,21 @@ def main(argv=None):
     from .train.es import ESConfig
     _add_dataclass_args(s, ESConfig)
     s.set_defaults(fn=cmd_train_es)
+
+    s = sub.add_parser("positions", help="add 3D soma positions to the brain graph (needed for HyperNEAT)")
+    s.add_argument("--graph", default=DEFAULT_GRAPH)
+    s.add_argument("--raw-dir", default="data/raw")
+    s.set_defaults(fn=cmd_positions)
+
+    s = sub.add_parser("train-hyperneat", help="stage 2b: NEAT-evolved CPPN sets synapse strengths from 3D geometry")
+    s.add_argument("--graph", default=DEFAULT_GRAPH)
+    s.add_argument("--checkpoint", required=True)
+    s.add_argument("--out", default="runs/hyperneat")
+    s.add_argument("--threads", type=int, default=4)
+    s.add_argument("--fresh", action="store_true", help="ignore existing NEAT checkpoints")
+    from .train.hyperneat import HyperNEATConfig
+    _add_dataclass_args(s, HyperNEATConfig)
+    s.set_defaults(fn=cmd_train_hyperneat)
 
     s = sub.add_parser("eval", help="play matches against scripted opponents")
     s.add_argument("--graph", default=DEFAULT_GRAPH)

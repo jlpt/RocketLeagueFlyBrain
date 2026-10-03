@@ -27,6 +27,7 @@ class FlyController:
         self.g_pre = None      # optional (N, B) gains (evolution members)
         self.g_post = None
         self.logit_bias = None  # optional (B, 8) motor bias (evolution members)
+        self.synapses = None    # optional per-column synapse matrices (HyperNEAT members)
         self.reset()
 
     def reset(self) -> None:
@@ -52,7 +53,8 @@ class FlyController:
         if self.plasticity is not None and reward is not None:
             extra = self.plasticity.reward_current(torch.as_tensor(reward, dtype=torch.float32))
         self.state, logits = self.brain.step(self.state, o, extra, self.g_pre, self.g_post,
-                                             plastic=self.plasticity, noise_std=self.noise_std)
+                                             plastic=self.plasticity, noise_std=self.noise_std,
+                                             synapses=self.synapses)
         if self.plasticity is not None:
             self.plasticity.update(self.state["r"])
         if self.logit_bias is not None:

@@ -102,6 +102,8 @@ class FlyBrain(nn.Module):
         self.register_buffer("w_values", torch.from_numpy(w.astype(np.float32)), persistent=False)
         self.register_buffer("crow", torch.from_numpy(graph.indptr.astype(np.int64)), persistent=False)
         self.register_buffer("col", torch.from_numpy(graph.indices.astype(np.int64)), persistent=False)
+        self.register_buffer("w_base", self.w_values.clone(), persistent=False)
+        self.edge_gain = None          # optional per-synapse multiplier (e.g. evolved by a CPPN)
         self._build_sparse()
 
         # -------- neuron groups
@@ -140,9 +142,23 @@ class FlyBrain(nn.Module):
     # ------------------------------------------------------------- helpers
     def _build_sparse(self):
         n = self.n
-        W = torch.sparse_csr_tensor(self.crow, self.col, self.w_values, size=(n, n))
-        WT = W.to_sparse_coo().t().coalesce().to_sparse_csr()
+        # int32 indices make torch's CSR kernels ~3x faster than int64 on CPU
+        W = torch.sparse_csr_tensor(self.crow.int(), self.col.int(), self.w_values, size=(n, n))
+        WT = torch.sparse_csr_tensor(self.crow, self.col, self.w_values, size=(n, n)).to_sparse_coo().t().coalesce().to_sparse_csr()
+        WT = torch.sparse_csr_tensor(WT.crow_indices().int(), WT.col_indices().int(), WT.values(), size=(n, n))
         self._W, self._WT = W, WT
+
+    def set_edge_gain(self, gain) -> None:
+        """Scale every synapse by a positive factor (sign/Dale's law preserved); None resets."""
+        if gain is None:
+            self.edge_gain = None
+            self.w_values = self.w_base.clone()
+        else:
+            g = torch.as_tensor(np.asarray(gain, dtype=np.float32))
+            assert g.shape == self.w_base.shape and bool((g > 0).all())
+            self.edge_gain = g
+            self.w_values = self.w_base * g
+        self._build_sparse()
 
     def _apply(self, fn, *args, **kwargs):
         out = super()._apply(fn, *args, **kwargs)
@@ -179,12 +195,14 @@ class FlyBrain(nn.Module):
     # ---------------------------------------------------------------- step
     def step(self, state: dict, obs: torch.Tensor, extra_current: torch.Tensor | None = None,
              g_pre: torch.Tensor | None = None, g_post: torch.Tensor | None = None,
-             plastic=None, noise_std: float = 0.0) -> tuple[dict, torch.Tensor]:
+             plastic=None, noise_std: float = 0.0, synapses=None) -> tuple[dict, torch.Tensor]:
         """Advance one synaptic hop.
 
         obs: (B, OBS_DIM) already sensory-delayed observation.
         g_pre/g_post: optional (N,1) or (N,B) gains (ES population members).
         plastic: optional plasticity module providing ``current(r)``.
+        synapses: optional callable x(N,B) -> W_b x_b with a different synapse matrix per
+            column (HyperNEAT population members); defaults to the shared connectome.
         Returns new state and action logits (B, 8).
         """
         if g_pre is None or g_post is None:
@@ -192,7 +210,8 @@ class FlyBrain(nn.Module):
             g_pre = gp[:, None] if g_pre is None else g_pre
             g_post = gq[:, None] if g_post is None else g_post
         r = state["r"]
-        syn = spmm(self._W, self._WT, g_pre * r) * g_post
+        x = g_pre * r
+        syn = (synapses(x) if synapses is not None else spmm(self._W, self._WT, x)) * g_post
         if plastic is not None:
             syn = syn + plastic.current(r, g_pre, g_post)
         drive = syn + self.bias[:, None] + self.sensory_current(obs)
@@ -249,12 +268,17 @@ class DelayLine:
 
 
 def save_brain(path, brain: FlyBrain, extra: dict | None = None) -> None:
-    torch.save({"cfg": brain.cfg.to_dict(), "state_dict": brain.state_dict(),
-                "graph_meta": brain.graph_meta, "extra": extra or {}}, path)
+    ck = {"cfg": brain.cfg.to_dict(), "state_dict": brain.state_dict(),
+          "graph_meta": brain.graph_meta, "extra": extra or {}}
+    if brain.edge_gain is not None:
+        ck["edge_gain"] = brain.edge_gain.numpy().astype(np.float16)
+    torch.save(ck, path)
 
 
 def load_brain(path, graph: BrainGraph) -> tuple[FlyBrain, dict]:
     ck = torch.load(path, map_location="cpu", weights_only=False)
     brain = FlyBrain(graph, BrainConfig(**ck["cfg"]))
     brain.load_state_dict(ck["state_dict"])
+    if ck.get("edge_gain") is not None:
+        brain.set_edge_gain(ck["edge_gain"].astype(np.float32))
     return brain, ck.get("extra", {})

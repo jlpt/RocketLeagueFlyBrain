@@ -34,6 +34,7 @@ class BrainGraph:
     syn: np.ndarray                # (nnz,) int32 synapse count
     groups: dict[str, np.ndarray] = field(default_factory=dict)
     meta: dict[str, str] = field(default_factory=dict)
+    pos: np.ndarray | None = None  # (N, 3) normalised soma coordinates (see positions.py)
 
     @property
     def n(self) -> int:
@@ -74,6 +75,8 @@ class BrainGraph:
         )
         for k, v in self.groups.items():
             arrays[f"group__{k}"] = v.astype(np.int32)
+        if self.pos is not None:
+            arrays["pos"] = self.pos.astype(np.float32)
         np.savez_compressed(path, **arrays)
 
     @classmethod
@@ -87,6 +90,7 @@ class BrainGraph:
             type_id=z["type_id"].astype(np.int32), type_names=z["type_names"],
             indptr=z["indptr"].astype(np.int64), indices=z["indices"].astype(np.int32),
             syn=z["syn"].astype(np.int32), groups=groups, meta=meta,
+            pos=z["pos"] if "pos" in z.files else None,
         )
 
     def summary(self) -> str:

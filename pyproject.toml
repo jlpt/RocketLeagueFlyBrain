@@ -16,6 +16,7 @@ dependencies = [
   "pyarrow>=12",
   "torch>=2.1",
   "rocketsim>=2.2",
+  "neat-python>=1.0",
 ]
 
 [project.optional-dependencies]

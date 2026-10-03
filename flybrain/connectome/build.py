@@ -174,6 +174,11 @@ def build_graph(
         indices=W.indices.astype(np.int32), syn=W.data.astype(np.int32),
         groups=groups, meta=meta,
     )
+    try:
+        from .positions import soma_positions
+        g.pos = soma_positions(g, raw_dir)
+    except Exception as e:  # positions are optional (only HyperNEAT needs them)
+        log(f"[build] no soma positions: {e}")
     log(g.summary())
     return g
 
