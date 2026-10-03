@@ -6,11 +6,36 @@ the **male CNS connectome** released by Janelia FlyEM and Google in 2025/26
 [data](https://male-cns.janelia.org/)). The game is simulated with
 [RocketSim](https://github.com/ZealanL/RocketSim). The fly is slowed down to
 human reaction time, has dopamine-gated synaptic plasticity, and is trained
-with imitation learning followed by evolution with an indirect encoding.
+with imitation learning followed by HyperNEAT: a NEAT-evolved CPPN that sets
+synapse strengths from the 3D geometry of the brain.
 
 Inspired by [fly-chess](https://github.com/cesp99/fly-chess).
 
-<!-- RESULTS -->
+## Results (honest)
+
+It plays, but it is not a strong bot. It drives to the ball, hits it 6–9 times
+a minute and scores, but it loses clearly to its own scripted teacher.
+
+Held-out test, 32 one-minute matches against the teacher bot (seeds never used
+in training or selection):
+
+| Brain | Goals for | Goals against | Mean fitness |
+|---|---|---|---|
+| after imitation (24 DAgger iterations) | 9 | 45 | −9.4 |
+| + HyperNEAT CPPN (20 generations), **shipped** | 10 | 32 | −5.3 |
+
+HyperNEAT gave +0.44 goal difference per match (±0.21 s.e.), almost all of it
+from conceding fewer goals. In the recorded 2-minute clips the shipped fly beat
+the ball-chaser 4–1 and lost 0–4 to the teacher.
+
+Why it isn't better: imitation can at best reach the teacher, and the teacher
+is a simple scripted bot; the fly also reacts 200+ ms late by design while the
+teacher reacts instantly; and everything was trained on 4 CPU cores in a few
+hours. The biggest next steps are a stronger teacher (e.g. Nexto) and
+reinforcement learning on a GPU with the fly brain as the policy.
+
+Measured reaction time of the untrained brain: median 217 ms (IQR 200–233 ms,
+hard floor 167 ms); `python -m flybrain reaction` measures any checkpoint.
 
 ## How it works
 
@@ -71,24 +96,36 @@ dopamine signal is part of the network rather than an external number. η, λ
 and the reward→dopamine gain are genes that evolution tunes. The bot can keep
 learning while it plays (`--plastic`, or `FLYBRAIN_PLASTIC=1` in RLBot).
 
-### Training: why not pure evolution?
-Evolution from scratch with an indirect encoding *would* run, but a 70k-neuron
-recurrent net that starts out flailing almost never produces the coherent
-behaviour that evolution needs as a signal; it would take far more compute
-than a CPU box has. So training has two stages, like fly-chess:
+### Training
+Pure evolution from scratch would run, but a 70k-neuron recurrent net that
+starts out flailing almost never produces the coherent behaviour evolution
+needs as a signal. So the brain is first trained by imitation, like fly-chess,
+and evolution refines it.
 
 1. **Imitation (DAgger + backprop through time).** A scripted teacher bot plays;
    then the fly drives and the teacher labels what it would have done in the
    states the fly gets itself into (DAgger). Gradients flow through the
    connectome into the gains. The fly sees the world 100 ms late while the
    teacher sees it live, so the fly has to learn to anticipate.
-2. **Evolution strategies with an indirect encoding.** The genome is one
+2. **HyperNEAT (shipped).** A CPPN is queried for every one of the 3.46M
+   synapses with the 3D soma positions of its two neurons (left/right
+   distance from the midline, dorsal/ventral, head→nerve cord), their side,
+   sign and sensorimotor layer, and scales that synapse's strength. Wiring and
+   signs stay fixed. NEAT (neat-python) evolves the CPPN's weights and
+   topology, starting from the imitation brain. 24 CPPNs run as one
+   block-diagonal sparse product. The champion is re-tested against the
+   unmodified brain on held-out matches before it is accepted. The evolved
+   rule is small and readable: weaken synapses onto lateral and motor-side
+   neurons (to ~0.7×), slightly strengthen those onto sensory-side neurons.
+3. **Evolution strategies with a cell-type encoding (experimental).** The genome is one
    presynaptic and one postsynaptic gain per *cell type* (rare types share a
-   gene with their class), plus the plasticity genes and a motor bias: about
-   5,000 genes instead of 400,000 per-neuron parameters. A whole population
-   runs as one sparse matrix product, fitness is real match outcome against
-   the teacher, and the algorithm is OpenAI-ES (antithetic pairs, common
-   random numbers, centred ranks, Adam).
+   gene with their class), plus the plasticity genes and a motor bias: 10,683
+   genes for 5,336 cell-type units instead of ~280,000 per-neuron parameters.
+   A whole population runs as one sparse matrix product, fitness is real match
+   outcome against the teacher, and the algorithm is OpenAI-ES (antithetic
+   pairs, common random numbers, centred ranks, Adam). Its runs here were cut
+   short by container restarts and showed no measurable gain, so it is not
+   part of the shipped brain.
 
 ### The arena
 RocketSim needs Rocket League's arena collision meshes, which have to be
@@ -104,10 +141,12 @@ pip install -e .[dev]
 python -m flybrain download            # 1.1 GB of connectome tables (CC-BY 4.0)
 python -m flybrain build               # -> data/brain/male_cns.npz
 python -m flybrain train-dagger --out runs/dagger
-python -m flybrain train-es --checkpoint runs/dagger/dagger_latest.pt --out runs/es
-python -m flybrain eval --checkpoint runs/es/es_final.pt
-python -m flybrain reaction --checkpoint runs/es/es_final.pt
-python -m flybrain.eval.replay --checkpoint runs/es/es_final.pt   # 3D replay viewer (HTML)
+python -m flybrain positions           # adds 3D soma coordinates (needed for HyperNEAT)
+python -m flybrain train-hyperneat --checkpoint runs/dagger/dagger_latest.pt --out runs/hyperneat
+python -m flybrain train-es --checkpoint runs/dagger/dagger_latest.pt --out runs/es   # optional alternative
+python -m flybrain eval --checkpoint runs/hyperneat/hyperneat_final.pt
+python -m flybrain reaction --checkpoint runs/hyperneat/hyperneat_final.pt
+python -m flybrain.eval.replay --checkpoint runs/hyperneat/hyperneat_final.pt   # 3D replay viewer (HTML)
 pytest
 ```
 
@@ -133,13 +172,14 @@ This path has not been tested against the real game from this repo's CI.
 
 ## Layout
 ```
-flybrain/connectome   download + build the brain graph (male CNS), synthetic test graph
+flybrain/connectome   download + build the brain graph (male CNS), soma positions, synthetic test graph
 flybrain/brain        FlyBrain model, delays, plasticity, reaction-time test, batched controller
 flybrain/sim          RocketSim match, generated arena meshes, sensory encoding, teacher + baseline bots
-flybrain/train        DAgger (stage 1), evolution strategies (stage 2), batched rollouts
+flybrain/train        DAgger (stage 1), HyperNEAT (stage 2), evolution strategies, batched rollouts
 flybrain/eval         match evaluation, replay recorder + 3D viewer
 flybrain/play         single-fly agent, RLBot packet conversion
 rlbot/                RLBot bot config
+scripts/              resumable training pipeline, HyperNEAT confirmation test
 ```
 
 ## Licences

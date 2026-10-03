@@ -1,0 +1,16 @@
+{
+  "matches_each": 32,
+  "seconds": 60.0,
+  "base": {
+    "mean_fitness": -9.388227422717575,
+    "goals_for": 9,
+    "goals_against": 45
+  },
+  "champion": {
+    "mean_fitness": -5.3417657605088165,
+    "goals_for": 10,
+    "goals_against": 32
+  },
+  "paired_goal_diff_gain_per_match": 0.4375,
+  "paired_std_err": 0.21030651593605293
+}
