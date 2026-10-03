@@ -22,7 +22,7 @@ echo "[supervise] dagger done $(date)"
 cp runs/dagger/dagger_latest.pt runs/dagger/dagger_final.pt
 
 python3 -u -m flybrain train-es --checkpoint runs/dagger/dagger_final.pt --out runs/es --resume \
-  --pairs 16 --generations "$ES_GENS" --episode-seconds 45 --sigma 0.05 --lr 0.02 >> runs/es/stdout.log 2>&1 || exit 1
+  --pairs 16 --generations "$ES_GENS" --episode-seconds 45 --sigma 0.03 --lr 0.01 >> runs/es/stdout.log 2>&1 || exit 1
 echo "[supervise] es done $(date)"
 python3 -u -m flybrain eval --checkpoint runs/es/es_final.pt --seconds 300 --matches 4 --out runs/eval_es.json > runs/eval_es.log 2>&1
 python3 -u -m flybrain eval --checkpoint runs/dagger/dagger_final.pt --seconds 300 --matches 4 --out runs/eval_dagger.json > runs/eval_dagger.log 2>&1

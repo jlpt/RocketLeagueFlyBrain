@@ -22,8 +22,9 @@ predicted by the brain itself. With exploration noise this rule is a form of
 node-perturbation policy gradient (REINFORCE), i.e. it genuinely improves
 reward on its own.
 
-Dale's law is respected: dW_ij is clipped to [-|w_ij|, +|w_ij|], so a
-synapse can be silenced or doubled but never change sign.
+Dale's law is respected: dW_ij is clipped to +-cap_frac * |w_ij| (default 25%),
+so a synapse can be strengthened or weakened but never change sign. The cap
+also keeps lifetime learning from undoing the motor code learned in training.
 
 eta, lambda and the reward->dopamine gain are "genes": the evolution stage
 tunes them (learning to learn).
@@ -41,12 +42,13 @@ from ..connectome.graph import BrainGraph
 
 @dataclass
 class PlasticityConfig:
-    eta: float = 0.02                 # learning rate
+    eta: float = 1e-3                 # learning rate (evolution tunes it)
     trace_lambda: float = 0.9         # eligibility decay per step (~330 ms)
     decay: float = 1e-4               # slow return of dW to the genetic baseline
     da_gain: float = 2.0              # reward -> DAN current
     post_avg_tau: float = 30.0        # steps for the running postsynaptic average
     da_avg_tau: float = 60.0          # steps for the dopamine baseline
+    cap_frac: float = 0.25            # |dW| <= cap_frac * |w|: learning tunes synapses, never rewires them
     sites: tuple = ("kc_mbon", "dn")
 
     def to_dict(self) -> dict:
@@ -82,7 +84,7 @@ class DopaminePlasticity:
         self.pre = brain.col[self.edge]
         post = graph.post_index()[e].astype(np.int64)
         self.post = torch.from_numpy(post)
-        self.w0 = brain.w_values[self.edge].abs()
+        self.w0 = brain.w_values[self.edge].abs() * self.cfg.cap_frac
         self.post_neurons, self.post_local = torch.unique(self.post, return_inverse=True)
         self.n = brain.n
         self.brain = brain

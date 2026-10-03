@@ -88,7 +88,7 @@ def test_checkpoint_roundtrip(graph, brain, tmp_path):
 
 
 def test_plasticity_respects_dale_and_learns(graph, brain):
-    pcfg = PlasticityConfig(eta=5.0)
+    pcfg = PlasticityConfig(eta=50.0)
     plast = DopaminePlasticity(brain, graph, pcfg)
     assert plast.n_synapses == len(plastic_edges(graph))
     ctrl = FlyController(brain, 2, plasticity=plast)
