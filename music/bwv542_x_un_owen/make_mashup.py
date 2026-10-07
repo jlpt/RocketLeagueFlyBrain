@@ -1,33 +1,41 @@
 #!/usr/bin/env python3
-"""BWV 542 x U.N. Owen Was Her? -- a MIDI mashup generator.
+"""BWV 542 x U.N. Owen Was Her? -- a quodlibet: both melodies at the same time.
 
-Builds a ~3.5 minute arrangement in G minor that splices and layers
-J. S. Bach's Fantasia and Fugue in G minor (BWV 542) with ZUN's
-"U.N. Owen Was Her?" (Touhou 6, Flandre Scarlet's theme).
+The fugue subject of J. S. Bach's Fantasia and Fugue in G minor (BWV 542)
+and the main theme of ZUN's "U.N. Owen Was Her?" (Touhou 6) are played
+*simultaneously*, over a new chord progression that fits both of them.
+
+How the two tunes are locked together
+-------------------------------------
+* Owen is transposed from D minor to G minor (Bach's key) and kept at its
+  original 155 bpm.  The fugue runs at half time (q = 77.5), so one Bach
+  sixteenth = one Owen eighth and Owen's 8-bar main theme (A + A') lasts
+  exactly as long as the fugue subject.
+* Owen enters half a Bach beat after the subject's up-beat D.  Under the
+  pair runs a new progression, one chord per Bach beat (two Owen beats):
+
+    Gm  Gm | D7(#5)  C/D | Cm  F | Bb  Eb | D7sus4  D | Gm  C7 | C9  F | Gm
+    (Bach's own circle-of-fifths sequence, and Owen's Dorian IV-chord)
+
+  so every note of both tunes is a chord tone or a short passing tone.
+  Owen's second (thirds) voice is kept only where it is a chord tone.
+* The same lock is reused transposed (D minor, Owen's original key) for
+  the fugue's *answer*, with the subject in the bass, and with the two
+  tunes swapping instruments.
+* Intro: Owen's 5/4 riff with the subject's head (D | Bb C A Bb G G') laid
+  into each pair of riff cycles.  Bridge: Owen's chromatic theme against
+  the subject's head sequenced over Owen's planing chords.  Ending: Bach's
+  own final cadence (m114-115) with Owen's arpeggio over the G-major chord.
 
 Sources (passed on the command line, not bundled):
-  * BWV 542 Fantasia / Fugue MIDIs from the Mutopia Project edition
-    (public domain, typeset by Urs Metzger):
+  * BWV 542 fugue MIDI from the Mutopia Project edition (public domain):
     https://www.mutopiaproject.org/ftp/BachJS/BWV542/bwv542/bwv542-mids.zip
-    -> bwv542.mid (Fantasia) and bwv542-a4-1.mid (Fugue)
-  * ZUN's SC-88Pro MIDI of U.N. Owen Was Her? (used only as a reference
-    for melody, bass line and harmony; everything is re-orchestrated).
+    -> bwv542-a4-1.mid
+  * ZUN's SC-88Pro MIDI of U.N. Owen Was Her? (reference for melody and
+    riff only; everything is re-harmonised and re-orchestrated).
 
 Usage:
-  python3 make_mashup.py FANTASIA.mid FUGUE.mid UN_OWEN_ZUN.mid OUT.mid
-
-Form (all in G minor; Owen is transposed down a fifth from D minor):
-  A  Fantasia bars 1-3, organ + choir, rubato          -> F#dim7 over G pedal
-  B  Owen intro riff (5/4), harpsichord/celesta build   -> Gm
-  C  Owen "chromatic" theme over planing organ chords   -> Ab (bII)
-  D  Owen main theme x2; harpsichord counter-melody built
-     from the fugue subject's turn figure (Bb C A Bb G G')
-  E  Fugue exposition (m1-22) at half time (q=77.5) with the band
-     entering voice by voice; ends on a D7 half cadence
-  F  Owen main theme climax (deceptive V-VI into Eb): organ plays the
-     Bach counter-melody, choir, guitar, full kit
-  G  Fugue ending (m106-115) incl. the final pedal entry, ritardando,
-     Bach's G-major final chord
+  python3 make_mashup.py FUGUE.mid UN_OWEN_ZUN.mid OUT.mid
 """
 import random
 import sys
@@ -37,6 +45,7 @@ import mido
 TPB = 480
 Q = TPB
 S16 = TPB // 4
+BB = 2 * Q            # one Bach beat (the fugue runs at half time)
 
 _STEP = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 
@@ -50,9 +59,62 @@ def P(name):
     return 12 * (int(name[i:]) + 1) + _STEP[name[0]] + acc
 
 
+def harsh(a, b):
+    """minor 2nd / minor 9th (a major 7th is left alone: it is a normal voicing)"""
+    lo, hi = sorted((a, b))
+    return (hi - lo) % 12 == 1
+
+
+def PC(names):
+    """'G Bb D' -> {7, 10, 2}"""
+    return {P(n + "4") % 12 for n in names.split()}
+
+
+# ---------------------------------------------------------------- material
+# BWV 542 fugue subject, soprano m1-4 (written pitch, times in Bach beats).
+SUBJECT = [
+    (1.5, .5, "D5"),
+    (2, .25, "Bb4"), (2.25, .25, "C5"), (2.5, .25, "A4"), (2.75, .25, "Bb4"),
+    (3, .5, "G4"), (3.5, .5, "G5"),
+    (4, .25, "F#5"), (4.25, .25, "G5"), (4.5, .25, "E5"), (4.75, .25, "F#5"),
+    (5, .5, "D5"), (5.5, .25, "G5"), (5.75, .25, "D5"),
+    (6, .5, "Eb5"), (6.5, .5, "C5"), (7, .5, "F4"), (7.5, .5, "F5"),
+    (8, .25, "D5"), (8.25, .25, "Eb5"), (8.5, .25, "C5"), (8.75, .25, "D5"),
+    (9, .5, "Bb4"), (9.5, .25, "Eb5"), (9.75, .25, "Bb4"),
+    (10, .5, "C5"), (10.5, .5, "A4"), (11, .5, "D4"), (11.5, .5, "D5"),
+    (12, .25, "Bb4"), (12.25, .25, "C5"), (12.5, .25, "A4"), (12.75, .25, "Bb4"),
+    (13, .25, "G4"), (13.25, .25, "A4"), (13.5, .25, "Bb4"), (13.75, .25, "C5"),
+    (14, .5, "D5"), (14.5, .5, "E5"),
+    (15, .25, "F5"), (15.25, .25, "G5"), (15.5, .25, "F5"), (15.75, .25, "G5"),
+]
+# after the subject: chord tones only (Owen holds his last note over Gm here)
+CODETTA = {"minor": [(16, .5, "Bb5"), (16.5, .5, "G5"), (17, .5, "D5")],
+           "major": [(16, .5, "B5"), (16.5, .5, "G5"), (17, .5, "D5")],
+           "bass": [(16, 1.5, "G4")]}
+
+# New harmony under both tunes (G minor), one chord per Bach beat:
+#   (Bach beat, length, bass, pad voicing, pitch classes allowed for Owen's 2nd voice)
+HARMONY = [
+    (2, 2, "G2", ["G3", "Bb3", "D4"], "G Bb D A C"),        # Gm
+    (4, 1, "D2", ["D3", "F#3", "C4"], "D F# Bb C E A"),     # D7(#5)
+    (5, 1, "D2", ["C4", "E4", "G4"], "D C E G A"),          # C/D
+    (6, 1, "C2", ["Eb3", "G3", "C4"], "C Eb G Bb D F A"),   # Cm(add9)
+    (7, 1, "F2", ["F3", "C4"], "F A C G"),                  # F
+    (8, 1, "Bb1", ["Bb3", "D4", "F4"], "Bb D F A C"),       # Bb
+    (9, 1, "Eb2", ["Eb3", "G3", "Bb3"], "Eb G Bb D"),       # Eb
+    (10, 1, "D2", ["D3", "G3", "C4"], "D G A C"),           # D7sus4
+    (11, 1, "D2", ["F#3", "A3", "D4"], "D F# A"),           # D
+    (12, 1, "G2", ["G3", "Bb3", "D4"], "G Bb D A"),         # Gm
+    (13, 1, "C2", ["E3", "Bb3", "C4"], "C E G Bb D A"),     # C7
+    (14, 1, "C2", ["E3", "Bb3", "D4"], "C E G Bb D A"),     # C9
+    (15, 1, "F2", ["F3", "A3", "C4"], "F A C G"),           # F
+    (16, 2, "G2", ["G3", "Bb3", "D4"], "G Bb D A"),         # Gm
+]
+FINAL_MAJOR = (16, 2, "G2", ["G3", "B3", "D4"], "G B D A")  # used before a key change
+
+
 # ---------------------------------------------------------------- reading
 def read_notes(path):
-    """All notes of a MIDI file as dicts (start/dur in quarter notes)."""
     m = mido.MidiFile(path)
     tpb = m.ticks_per_beat
     out = []
@@ -70,27 +132,40 @@ def read_notes(path):
     return out
 
 
+def owen_extract(notes, ch, a, b, transpose):
+    """ZUN notes on `ch` in 16th-grid window [a, b) -> {rel16: [(dur16, pitch), ...]}"""
+    out = {}
+    for n in notes:
+        if n["ch"] != ch:
+            continue
+        q = round(n["start"] * 4)
+        if a <= q < b:
+            out.setdefault(q - a, []).append((max(1, round(n["dur"] * 4)), n["pitch"] + transpose))
+    return dict(sorted(out.items()))
+
+
 # ---------------------------------------------------------------- writing
 CHANNELS = {
     # name: (channel, GM program, track name, volume, pan, reverb, chorus)
-    "organ": (0, 19, "Church organ - manuals", 96, 64, 96, 0),
-    "pedal": (1, 19, "Church organ - pedal", 100, 64, 90, 0),
-    "lead":  (2, 80, "Square lead", 82, 58, 55, 30),
-    "dbar":  (3, 16, "Drawbar organ (lead double)", 66, 72, 55, 20),
+    "organ": (0, 19, "Church organ - manuals", 96, 60, 92, 0),
+    "pedal": (1, 19, "Church organ - pedal", 100, 64, 88, 0),
+    "lead":  (2, 80, "Square lead", 92, 68, 55, 30),
+    "dbar":  (3, 16, "Drawbar organ", 70, 72, 55, 20),
     "hpsi":  (4, 6, "Harpsichord", 84, 36, 60, 0),
-    "str":   (5, 48, "Strings", 78, 92, 85, 40),
+    "str":   (5, 48, "Strings", 74, 92, 85, 40),
     "bass":  (6, 33, "Finger bass", 96, 64, 25, 0),
-    "cele":  (7, 8, "Celesta", 72, 96, 75, 0),
-    "choir": (8, 52, "Choir aahs", 80, 64, 105, 30),
-    "drums": (9, 16, "Drums (power kit)", 104, 64, 45, 0),
-    "timp":  (10, 47, "Timpani", 98, 64, 80, 0),
-    "gtr":   (11, 29, "Overdrive guitar", 62, 30, 45, 0),
-    "brass": (12, 61, "Brass section", 74, 80, 70, 10),
+    "cele":  (7, 8, "Celesta", 80, 96, 75, 0),
+    "choir": (8, 52, "Choir aahs", 76, 64, 105, 30),
+    "drums": (9, 16, "Drums (power kit)", 92, 64, 45, 0),
+    "timp":  (10, 47, "Timpani", 96, 64, 80, 0),
+    "gtr":   (11, 29, "Overdrive guitar", 70, 30, 45, 0),
+    "brass": (12, 61, "Brass section", 72, 80, 70, 10),
+    "glock": (13, 9, "Glockenspiel", 78, 100, 70, 0),
 }
 
 K, K2, RS, SN, CP, CH, PH, OH = 36, 35, 37, 38, 39, 42, 44, 46
 CR, CR2, RD, SPL, CHN = 49, 57, 51, 55, 52
-TLO, TMID, THI, TFL = 45, 47, 50, 41
+TLO, TMID, THI = 45, 47, 50
 
 
 class Arrangement:
@@ -108,7 +183,7 @@ class Arrangement:
             vel += self.rnd.randint(-human, human)
         self.notes.append((name, tick, dur, int(pitch), max(1, min(127, int(vel)))))
 
-    def chord(self, name, tick, dur, pitches, vel, human=4):
+    def chord(self, name, tick, dur, pitches, vel, human=3):
         for p in pitches:
             self.note(name, tick, dur, p, vel, human)
 
@@ -132,13 +207,13 @@ class Arrangement:
     def marker(self, tick, text):
         self.meta.append((int(tick), "marker", dict(text=text)))
 
-    def drums(self, t0, patterns, vel_scale=1.0, step=S16):
+    def drums(self, t0, patterns, scale=1.0, step=S16):
         """patterns: {drum note: 'X.x.o...'}; X=accent, x=normal, o=ghost."""
         vmap = {"X": 112, "x": 88, "o": 58}
         for drum, pat in patterns.items():
             for i, c in enumerate(pat):
                 if c in vmap:
-                    self.note("drums", t0 + i * step, S16, drum, vmap[c] * vel_scale, human=5)
+                    self.note("drums", t0 + i * step, S16, drum, vmap[c] * scale, human=5)
 
     def timp_roll(self, t0, t1, pitch, v0, v1, rate=S16 // 2):
         n = max(1, int((t1 - t0) // rate))
@@ -146,7 +221,6 @@ class Arrangement:
             self.note("timp", t0 + i * rate, rate, pitch, v0 + (v1 - v0) * i / max(1, n - 1), human=3)
 
     def save(self, path, title):
-        # resolve overlapping notes of the same pitch on the same channel
         by_key = {}
         for n in self.notes:
             by_key.setdefault((n[0], n[3]), []).append(list(n))
@@ -204,445 +278,338 @@ def _flush(track, evs):
         track.append(mido.MetaMessage("end_of_track", time=0))
 
 
-# ------------------------------------------------------------ material
-def owen_extract(notes, ch, a, b, transpose):
-    """ZUN notes on `ch` in 16th-grid window [a, b): (rel16, dur16, pitch)."""
-    out = []
-    for n in notes:
-        if n["ch"] != ch:
-            continue
-        q = round(n["start"] * 4)
-        if a <= q < b:
-            out.append((q - a, max(1, round(n["dur"] * 4)), n["pitch"] + transpose))
-    return sorted(out)
-
-
-def group_onsets(evts):
-    g = {}
-    for q, d, p in evts:
-        g.setdefault(q, []).append((d, p))
-    return g
-
-
-# Owen main-theme harmony in G minor: one chord per half bar (8 sixteenths)
-#            name, root pc-name, pad voicing, bass pair (root, fifth)
-EB = ("Eb", ["Eb3", "Bb3", "G4"], ["Eb2", "Bb2"])
-F_ = ("F", ["F3", "C4", "A4"], ["F2", "C3"])
-GM = ("Gm", ["G3", "D4", "Bb4"], ["G2", "D3"])
-CE = ("C/E", ["E3", "C4", "C5"], ["E2", "C3"])
-EB2 = ("Eb", ["Eb3", "Bb3", "Eb5"], ["Eb2", "Bb2"])
-F2 = ("F", ["F3", "C4", "F5"], ["F2", "C3"])
-GM2 = ("Gm", ["G3", "D4", "G5"], ["G2", "D3"])
-PHRASE_CHORDS = [EB, F_, GM, CE, EB2, F2, GM2, GM2]
-CHORD_ROOT = {"Eb": "Eb", "F": "F", "Gm": "G", "C/E": "C"}
-GTR_ROOT = {"Eb": "Eb3", "F": "F3", "Gm": "G3", "C/E": "C3"}
-CHOIR_VOICING = {"Eb": ["Eb3", "G3", "Bb3", "Eb4", "G4"], "F": ["F3", "A3", "C4", "F4", "A4"],
-                 "Gm": ["G3", "Bb3", "D4", "G4", "Bb4"], "C/E": ["E3", "G3", "C4", "E4", "G4"]}
-
-# Counter-melody made of the BWV 542 fugue subject's cells, re-fitted to
-# Owen's chords.  (rel16, dur16, note).  The Gm cell is Bach's literal
-# opening "Bb C A Bb G G'"; the C/E cell mirrors "F# G E F# D G D".
-_C_COMMON = [
-    (0, 1, "G4"), (1, 1, "A4"), (2, 1, "F4"), (3, 1, "G4"), (4, 2, "Eb4"), (6, 2, "Eb5"),      # Eb
-    (8, 1, "A4"), (9, 1, "Bb4"), (10, 1, "G4"), (11, 1, "A4"), (12, 2, "F4"), (14, 2, "F5"),   # F
-    (16, 1, "Bb4"), (17, 1, "C5"), (18, 1, "A4"), (19, 1, "Bb4"), (20, 2, "G4"), (22, 2, "G5"),  # Gm
-    (24, 1, "E5"), (25, 1, "F5"), (26, 1, "D5"), (27, 1, "E5"), (28, 2, "C5"), (30, 1, "G5"), (31, 1, "C5"),  # C/E
-    (32, 1, "G5"), (33, 1, "A5"), (34, 1, "F5"), (35, 1, "G5"), (36, 2, "Eb5"), (38, 2, "Eb4"),  # Eb
-    (40, 1, "C5"), (41, 1, "D5"), (42, 1, "Bb4"), (43, 1, "C5"), (44, 2, "F4"), (46, 2, "F5"),   # F
-]
-COUNTER_A = _C_COMMON + [
-    (48, 1, "D5"), (49, 1, "C5"), (50, 1, "Bb4"), (51, 1, "A4"), (52, 2, "G4"), (54, 2, "Bb4"),  # Gm
-    (56, 2, "D5"), (58, 2, "Bb4"), (60, 2, "G4"), (62, 1, "D4"), (63, 1, "F#4"),                # Gm
-]
-COUNTER_B = _C_COMMON + [
-    (48, 1, "Bb4"), (49, 1, "C5"), (50, 1, "A4"), (51, 1, "Bb4"), (52, 2, "G4"), (54, 2, "G5"),  # Gm
-    (56, 1, "Bb4"), (57, 1, "A4"), (58, 1, "G4"), (59, 1, "F#4"), (60, 2, "G4"), (62, 2, "D4"),  # Gm
-]
-
 MAIN_GROOVE = {K: "X...X...X...X...", CH: "x...x...x...x...", OH: "..x...x...x...x.",
                CP: "....x.......x..."}
 
 
-def build(fantasia_path, fugue_path, owen_path, out_path):
-    A = Arrangement()
-    FA = read_notes(fantasia_path)
-    FU = read_notes(fugue_path)
-    OW = read_notes(owen_path)
-
-    # ============================================================ A: Fantasia
-    A.marker(0, "Fantasia (BWV 542, bars 1-3)")
-    A.timesig(0, 4)
-    A.tempo(0, 46)
-    A.tempo(8 * Q, 43)
-    A.tempo(10 * Q, 40)
-    A.tempo(11 * Q, 35)
-    A.tempo(11.5 * Q, 30)
-    end_a = 12 * Q
-    for n in FA:
-        if n["start"] >= 12 or n["track"] not in (1, 2, 5):
-            continue
-        t, d, p = n["start"] * Q, n["dur"] * Q, n["pitch"]
-        if n["track"] == 2 and n["start"] >= 10:
-            d = end_a - t                      # let the F#dim7 ring into the riff
-        if n["track"] == 5:
-            d = end_a - t if n["start"] >= 10 else d
-            A.note("pedal", t, d - 10, p, 92)
-            A.note("pedal", t, d - 10, p + 12, 70)
-        else:
-            A.note("organ", t, d - 10, p, 90, human=2)
-        if n["track"] == 2:                    # choir doubles the left-hand chords as a pad
-            A.note("choir", t, max(d, 2 * Q) - 20, p, 72, human=2)
-    A.ramp("choir", 0, 4 * Q, 11, 70, 115)
-    A.ramp("choir", 8 * Q, 12 * Q, 11, 115, 80)
-    A.timp_roll(0, 1.5 * Q, P("G2"), 96, 50, rate=Q // 8)
-    A.timp_roll(11 * Q, 12 * Q, P("G2"), 45, 100, rate=Q // 8)
-
-    # ============================================================ B: Owen intro (5/4)
-    B0 = end_a
-    A.marker(B0, "U.N. Owen intro riff (5/4)")
-    A.mix(B0, drums=86)
-    A.tempo(B0, 155)
-    A.timesig(B0, 5)
+# ================================================================ sections
+def riff(A, OW, T0, cycles, full):
+    """Owen's 5/4 intro riff (Gm arpeggios + stabs) with the fugue subject's
+    head (D | Bb C A Bb G G') laid into every pair of cycles on the organ."""
     CYC = 20
-    riff = owen_extract(OW, 2, 24, 184, -7)          # arps + stabs, now Bb4 G4 D4 / C F A
-    bassl = owen_extract(OW, 1, 24, 184, -7)
-    groups = group_onsets(riff)
-    A.note("pedal", B0, 2 * CYC * S16 - 40, P("G1"), 80)
-    A.note("pedal", B0, 2 * CYC * S16 - 40, P("G2"), 60)
-    A.note("timp", B0, Q, P("G2"), 105)
-    A.drums(B0, {CR: "X"})
-    for q, items in groups.items():
-        k = q // CYC
-        t = B0 + q * S16
+    arps, bassl = {}, {}
+    src_a = owen_extract(OW, 2, 24, 24 + CYC * 4, -7)
+    src_b = owen_extract(OW, 1, 24, 24 + CYC * 4, -7)
+    for rep in range(0, cycles, 4):
+        for src, dst in ((src_a, arps), (src_b, bassl)):
+            for q, items in src.items():
+                if q + rep * CYC < cycles * CYC:
+                    dst[q + rep * CYC] = items
+    for q, items in arps.items():
+        k, pos = divmod(q, CYC)
+        t = T0 + q * S16
         stab = len(items) > 1
-        for d, p in items:
-            A.note("hpsi", t, (d + 1) * S16, p, 100 if stab else 80)
-            if not stab and k >= 2:
-                A.note("cele", t, (d + 1) * S16, p + 12, 62 + 3 * k)
-        if stab and k >= 4:
-            ps = [p for d, p in items]
-            dur = items[0][0] * S16 + 30
-            A.chord("organ", t, dur, ps, 96)
-            if k >= 6:
-                A.chord("brass", t, dur, [p + 12 for p in ps], 88)
-            A.chord("str", t, dur, ps, 80)
-    for q, d, p in bassl:
-        k = q // CYC
-        t = B0 + q * S16
-        if k >= 2:
-            A.note("bass", t, d * S16 - 30, p, 96)
-        if k >= 4:
-            A.note("pedal", t, d * S16 - 30, p - 12, 78)
-            if q % CYC in (0, 12):
-                A.note("timp", t, Q, p if p < P("D3") else p - 12, 92)
-    for k in range(8):
-        t = B0 + k * CYC * S16
-        if k in (2, 3):
-            A.drums(t, {RD: "x...x...x...x.......", K: "X...........x.x..x..", PH: "..o...o...o........."}, 0.85)
-        elif 4 <= k <= 6:
-            A.drums(t, {K: "X.....X.....X.X..X..", SN: "....x.....x......X..", CH: "x.x.x.x.x.x.........",
-                        OH: "............x......."[:CYC], CR: ("X..........." + "X.......") if k in (4, 6) else ""})
-        elif k == 7:
-            A.drums(t, {K: "X.....X.....X.X..X..", CH: "x.x.x.x.x.x.........",
+        ps = [p for d, p in items]
+        if stab and k == cycles - 1 and pos == 17:
+            ps = [P("C4"), P("F#4"), P("A4")]           # last stab -> D7, sets up the subject's D
+        dur = items[0][0] * S16 + (30 if stab else 0)
+        A.chord("hpsi", t, dur, ps, 100 if stab else 80, human=4)
+        if not stab and (full or k >= 2):
+            A.note("cele", t, dur, ps[0] + 12, 60 + (8 if full else 3 * k))
+        if stab and (full or k >= 4):
+            A.chord("organ", t, items[0][0] * S16 + 30, ps, 86)
+            A.chord("str", t, items[0][0] * S16 + 30, ps, 74)
+            if full or k >= 6:
+                A.chord("brass", t, items[0][0] * S16 + 30, [p + 12 for p in ps], 82)
+    for q, items in bassl.items():
+        k, pos = divmod(q, CYC)
+        d, p = items[0]
+        if k == cycles - 1 and pos == 16:
+            p = P("D3")
+        if full or k >= 2:
+            A.note("bass", T0 + q * S16, d * S16 - 30, p, 94)
+        if full or k >= 4:
+            A.note("pedal", T0 + q * S16, d * S16 - 30, p - 12, 74)
+    if not full:
+        A.note("pedal", T0, 4 * CYC * S16 - 40, P("G1"), 76)
+        A.note("pedal", T0, 4 * CYC * S16 - 40, P("G2"), 58)
+    # subject head: up-beat D on the last beat of an even cycle, the rest in the next cycle
+    head = [(0, 2, "Bb3"), (2, 2, "C4"), (4, 2, "A3"), (6, 2, "Bb3"), (8, 4, "G3"), (12, 4, "G4")]
+    for k in range(0, cycles, 2):
+        t = T0 + k * CYC * S16
+        v = 92 if full or k >= 2 else 84
+        A.note("organ", t + 16 * S16, 4 * S16 - 20, P("D4"), v)
+        for q, d, nm in head:
+            A.note("organ", t + (CYC + q) * S16, d * S16 - 20, P(nm), v)
+    for k in range(cycles):
+        t = T0 + k * CYC * S16
+        if k == cycles - 1:
+            A.drums(t, {K: "X.....X.....X.X.....", CH: "x.x.x.x.x.x.........",
                         SN: "....x.....x.oxxxXXXX", TMID: "............x......."})
+        elif full or k >= 4:
+            A.drums(t, {K: "X.....X.....X.X..X..", SN: "....x.....x......X..", CH: "x.x.x.x.x.x.........",
+                        OH: "............x.......", CR: "X" if k % 2 == 0 else ""})
+        elif k >= 2:
+            A.drums(t, {RD: "x...x...x...x.......", K: "X...........x.x..x..", PH: "..o...o...o........."}, 0.85)
 
-    # ============================================================ C: chromatic theme
-    C0 = B0 + 8 * CYC * S16
-    A.marker(C0, "U.N. Owen chromatic theme")
-    A.mix(C0, drums=94, lead=106, dbar=74)
-    A.timesig(C0, 4)
-    chords = owen_extract(OW, 3, 184, 312, +5)       # G3 D4 Bb4 / F#3 C#4 A4 / A3 E4 C#5 / Ab3 Eb4 C5
-    cg = group_onsets(chords)
-    for q, items in sorted(cg.items()):
-        t = C0 + q * S16
-        ps = sorted(p for d, p in items)
-        dur = items[0][0] * S16
-        A.chord("organ", t, dur - 12, ps, 86, human=2)
-        A.note("pedal", t, dur - 12, ps[0] - 12, 82)
-        A.note("pedal", t, dur - 12, ps[0] - 24, 64)
-        arp = [ps[2], ps[0] + 12, ps[1]]
-        if arp[0] < arp[1]:
-            arp[0] += 12
-        for i in range(8):
-            A.note("hpsi", t + i * S16, S16 * (2 if i < 7 else 1) - 10, arp[i % 3], (78 if q < 64 else 62) - (8 if i % 3 else 0))
-        if q >= 64:
-            A.chord("str", t, dur - 12, [p + 12 for p in ps], 66)
-    for q, d, p in owen_extract(OW, 1, 184, 312, -7):
-        A.note("bass", C0 + q * S16, d * S16 - 25, p, 94)
-    mel = group_onsets(owen_extract(OW, 6, 248, 312, +5))
-    for q, items in mel.items():
-        ps = sorted(p for d, p in items)
+
+def quodlibet(A, U, tr, opt):
+    """Bach's subject and Owen's main theme together, 8 bars from tick U
+    (= Owen's first note = Bach beat 2).  `tr` transposes everything."""
+    def bt(b):
+        return U + (b - 2) * BB
+
+    harmony = HARMONY[:-1] + [FINAL_MAJOR if opt.get("final_major") else HARMONY[-1]]
+    tones_at = {}
+    for b, ln, bass, pad, tones in harmony:
+        for i in range(ln * 8):
+            tones_at[(b - 2) * 8 + i] = {(pc + tr) % 12 for pc in PC(tones)}
+
+    # --- Bach: subject (+ codetta)
+    subj = SUBJECT + CODETTA[opt.get("codetta") or ("major" if opt.get("final_major") else "minor")]
+    bach, owen = [], []                               # sounding melody notes: (start, end, pitch)
+    for i, (b, d, nm) in enumerate(subj):
+        p = P(nm) + tr
+        if i == 0 and opt.get("tonal_answer"):
+            p -= 2                                    # Bach's tonal answer starts on G, not A
+        for inst, octv, vel in opt["subject"]:
+            A.note(inst, bt(b), d * BB - 24, p + octv, vel, human=2)
+            bach.append((bt(b), bt(b) + d * BB, p + octv))
+
+    def clashes(t0, t1, pitch, against):
+        return any(s < t1 and e > t0 and harsh(pitch, m) for s, e, m in against)
+    # --- Owen: main theme (A + A'), 2nd voice only where it is a chord tone
+    for u, items in opt["owen_notes"].items():
+        ps = sorted(p + tr for d, p in items)
         d = items[0][0]
-        t = C0 + (q + 64) * S16
-        A.note("lead", t, d * S16, ps[0], 98)
-        A.note("dbar", t, d * S16, ps[0], 80)
-        A.note("cele", t, d * S16 + S16, ps[-1], 80)
+        t = U + u * S16
+        dur = d * S16 - (0 if d >= 8 else 20)
+        for inst, octv, vtop, vlow in opt["owen"]:
+            A.note(inst, t, dur, ps[-1] + octv, vtop)
+            owen.append((t, t + dur, ps[-1] + octv))
+            if (vlow and len(ps) > 1 and ps[0] % 12 in tones_at[u]
+                    and not clashes(t, t + dur, ps[0] + octv, bach)):
+                A.note(inst, t, dur, ps[0] + octv, vlow)
+                owen.append((t, t + dur, ps[0] + octv))
+    # --- harmony
+    for b, ln, bass, pad, tones in harmony:
+        t, dur = bt(b), ln * BB
+        bp = P(bass) + tr
+        while bp > P("D2"):
+            bp -= 12
+        while bp < P("Bb1") - 1:
+            bp += 12
+        padp = [P(x) + tr for x in pad]
+        while min(padp) < P("D3"):                   # keep pads in the D3..C#4 window
+            padp = [x + 12 for x in padp]
+        while min(padp) > P("C#4"):
+            padp = [x - 12 for x in padp]
+        for inst, octv, vel in opt.get("pad", []):
+            # drop pad notes that would rub (m2/m9) against a passing note of either tune
+            keep = [x + octv for x in padp if not clashes(t, t + dur, x + octv, bach + owen)]
+            A.chord(inst, t, dur - 15, keep or [min(padp) + octv], vel)
+        if opt.get("bass") == "roots":
+            for e in range(ln * 4):
+                A.note("bass", t + e * 2 * S16, 2 * S16 - 30, bp + (12 if e % 2 else 0), 96 if e % 2 == 0 else 84)
+        elif opt.get("bass") == "long":
+            A.note("bass", t, dur - 30, bp, 84)
+        if opt.get("pedal_roots"):
+            A.note("pedal", t, dur - 20, bp, 80)
+            A.note("pedal", t, dur - 20, bp + 12, 62)
+        if opt.get("timp") and (b - 2) % 4 == 0:
+            A.note("timp", t, Q, bp if bp >= P("F2") else bp + 12, 92)
+    # --- drums: 8 bars from U
+    style = opt.get("drums")
     for bar in range(8):
-        t = C0 + bar * 16 * S16
+        t = U + bar * 16 * S16
+        if style == "light":
+            pat = {CH: "o.x.o.x.o.x.o.x.", K: "x.......x......."}
+            if bar == 0:
+                pat[CR] = "x"
+        elif style in ("groove", "big"):
+            pat = dict(MAIN_GROOVE)
+            if style == "big":
+                pat[CH] = "x.o.x.o.x.o.x.o."
+            if bar in ((0, 4) if style == "groove" else (0, 2, 4, 6)):
+                pat[CR] = "X"
+        else:
+            continue
+        if bar == 7:
+            pat[SN] = "........x.xxXXXX" if style == "big" else "..........x.xxXx"
+            pat.pop(CP, None)
+        A.drums(t, pat)
+
+
+def bridge(A, OW, T0):
+    """Owen's chromatic theme against the subject's head, sequenced over
+    Owen's planing chords (Gm F#m A Ab); ends on D7 for the subject's up-beat."""
+    cyc = [("G", ["G3", "D4", "G4"], ["Bb3", "C4", "A3", "Bb3", "G3", "G4"]),
+           ("F#", ["F#3", "C#4", "F#4"], ["A3", "B3", "G#3", "A3", "F#3", "F#4"]),
+           ("A", ["A3", "E4", "A4"], ["C#4", "D4", "B3", "C#4", "A3", "A4"]),
+           ("Ab", ["Ab3", "Eb4", "Ab4"], ["C4", "Db4", "Bb3", "C4", "Ab3", "Ab4"])]
+    d7 = ("D", ["D3", "A3", "C4"], ["F#3", "G3", "E3", "F#3"])
+    rhythm = [(0, 1), (1, 1), (2, 1), (3, 1), (4, 2), (6, 2)]
+    for i in range(16):
+        root, pad, head = d7 if i == 15 else cyc[i % 4]
+        t = T0 + i * 8 * S16
+        A.chord("str", t, 8 * S16 - 15, [P(x) for x in pad], 70 if i < 8 else 78)
+        A.chord("organ", t, 8 * S16 - 15, [P(x) for x in pad], 58)
+        for (q, d), nm in zip(rhythm, head):
+            A.note("organ", t + q * S16, d * S16 - 15, P(nm), 94)
+            if i >= 8:
+                A.note("hpsi", t + q * S16, d * S16 - 15, P(nm), 80)
+        r = P(root + "2")
+        if r > P("A2"):
+            r -= 12
+        for e in range(4):
+            A.note("bass", t + e * 2 * S16, 2 * S16 - 30, r + (12 if e % 2 else 0), 94 if e % 2 == 0 else 82)
+    mel = owen_extract(OW, 6, 248, 312, +5)
+    for rep in range(2):
+        for u, items in mel.items():
+            ps = sorted(p for d, p in items)
+            d = items[0][0]
+            t = T0 + (rep * 64 + u) * S16
+            A.note("lead", t, d * S16, ps[0], 100)
+            A.note("glock", t, d * S16, ps[0], 74)
+            if rep:
+                A.note("dbar", t, d * S16, ps[0], 78)
+                A.note("cele", t, d * S16 + S16, ps[-1], 72)
+    for bar in range(8):
         pat = {K: "X...X...X...X...", RS: "x...x...x...x...", CH: "X.X...XXX...X..X", OH: "....x.....x...x."}
         if bar >= 4:
             pat[CP] = "....x.......x..."
         if bar in (0, 4):
             pat[CR] = "X"
-        if bar == 3:
-            pat[SN] = "............o.xx"
         if bar == 7:
-            pat = {K: "X...X...X...X.X.", CH: "X.X...XXX.......", SN: "....x.......xxxX",
-                   TLO: "........x.x.....", TMID: "..........x.x..."}
-        A.drums(t, pat, 0.9)
-    A.note("timp", C0, Q, P("G2"), 100)
+            pat = {K: "X...X...X...X...", CH: "X.X...XXX.......", SN: "....x...x.xxXXXX",
+                   TLO: "..........x.x...", TMID: "..........x.x..."}
+        A.drums(T0 + bar * 16 * S16, pat, 0.95)
 
-    # ======================================================= Owen main theme helper
-    def main_theme(T0, climax):
-        lead = group_onsets(owen_extract(OW, 6, 312, 568, -7))
-        for q, items in lead.items():
-            ps = sorted(p for d, p in items)
-            d = items[0][0]
-            t = T0 + q * S16
-            long_note = d >= 8
-            A.note("lead", t, d * S16 - (0 if long_note else 20), ps[-1], 104 if climax else 100)
-            A.note("lead", t, d * S16 - (0 if long_note else 20), ps[0], 84 if climax else 80)
-            A.note("dbar", t, d * S16 - (0 if long_note else 20), ps[-1], 84)
-            A.note("dbar", t, d * S16 - (0 if long_note else 20), ps[0], 70)
-            if climax:
-                A.note("brass", t, d * S16 - 20, ps[-1] - 12, 70 if q < 128 else 82)
-        for ph in range(4):
-            P0 = T0 + ph * 64 * S16
-            counter = COUNTER_A if ph % 2 == 0 else COUNTER_B
-            for ci, (cname, voicing, bpair) in enumerate(PHRASE_CHORDS):
-                if ci == 7:   # last Gm is tied to the previous one
-                    continue
-                t = P0 + ci * 8 * S16
-                dur = (16 if ci == 6 else 8) * S16
-                A.chord("str", t, dur - 15, [P(v) + (12 if climax else 0) for v in voicing],
-                        70 if climax else 72, human=2)
-                if climax:
-                    A.chord("choir", t, dur - 15, [P(v) for v in CHOIR_VOICING[cname]], 74, human=2)
-                    A.note("pedal", t, dur - 15, P(bpair[0]), 84)
-                    A.note("pedal", t, dur - 15, P(bpair[0]) - 12, 66)
-                final_bar = (ph == 3 and ci == 6 and not climax)
-                if final_bar:   # one big G-minor hit with the crash, then let it ring
-                    A.note("bass", t, 16 * S16, P("G1"), 100)
-                    A.note("timp", t, Q, P("G2"), 108)
-                for half in range(0 if final_bar else (1 if ci != 6 else 2)):
-                    root = GTR_ROOT[cname]
-                    for e in range(4):
-                        tt = t + (half * 4 + e) * 2 * S16
-                        A.note("bass", tt, 2 * S16 - 30, P(bpair[e % 2]), 98 if e % 2 == 0 else 86)
-                        if climax:
-                            A.chord("gtr", tt, int(1.5 * S16), [P(root), P(root) + 7, P(root) + 12],
-                                    84 if e % 2 == 0 else 70)
-                if ci in (0, 4) or (ci == 2 and climax):
-                    A.note("timp", t, Q, P(bpair[0]) + (12 if P(bpair[0]) < P("D2") else 0), 96 if climax else 84)
-            # Bach counter-melody: harpsichord in 2nd half of D; organ (+harpsichord 8va) in F
-            if climax or ph >= 2:
-                for q, d, nm in counter:
-                    t = P0 + q * S16
-                    if climax:
-                        A.note("organ", t, d * S16 - 12, P(nm), 96, human=3)
-                        if ph >= 2:
-                            A.note("hpsi", t, d * S16 - 10, P(nm) + 12, 84)
-                    else:
-                        A.note("hpsi", t, d * S16 - 10, P(nm), 92)
-            else:
-                for ci, (cname, voicing, bpair) in enumerate(PHRASE_CHORDS):
-                    t = P0 + ci * 8 * S16
-                    tones = sorted(P(v) % 12 for v in CHOIR_VOICING[cname][:3])
-                    trip = sorted(set((P("D4") + ((pc - P("D4")) % 12)) for pc in tones))
-                    arp = [trip[2], trip[1], trip[0]]
-                    for i in range(8):
-                        A.note("hpsi", t + i * S16, (2 if i < 7 else 1) * S16 - 10, arp[i % 3], 74 - (6 if i % 3 else 0))
-            # drums
-            for bar in range(4):
-                t = P0 + bar * 16 * S16
-                pat = dict(MAIN_GROOVE)
-                if climax:
-                    pat[CH] = "x.o.x.o.x.o.x.o."
-                if bar == 0:
-                    pat[CR] = "X"
-                    if climax:
-                        pat[CR2] = "X"
-                if climax and bar == 2:
-                    pat[CR] = "X"
-                if bar == 3:
-                    pat[SN] = "..........x..x.x"
-                    if ph == 3 and climax:
-                        pat = {K: "X...X...X...X...", CH: "x...x...", SN: "....x...xxxxXXXX",
-                               THI: "............x...", TMID: ".............x..", TLO: "..............x."}
-                    elif ph == 3:   # stop on a hit and let the chord ring into the fugue
-                        pat = {K: "X", CR: "X", CR2: "X"}
-                A.drums(t, pat, 1.0 if climax else 0.92)
-        if climax:
-            A.ramp("choir", T0, T0 + 4 * 16 * S16, 11, 80, 120)
 
-    # ============================================================ D: main theme
-    D0 = C0 + 8 * 16 * S16
-    A.marker(D0, "U.N. Owen main theme (Bach counter-melody on harpsichord)")
-    A.mix(D0, drums=92, lead=104, dbar=70)
-    main_theme(D0, climax=False)
-    A.note("timp", D0, Q, P("Eb2") + 12, 100)
-
-    # ============================================================ E: fugue exposition
-    E0 = D0 + 16 * 16 * S16
-    A.marker(E0, "Fugue exposition (BWV 542, m1-22)")
-    A.mix(E0, drums=80, lead=90)
-    BB = 2 * Q                      # one Bach beat = two MIDI beats (half time)
-    CUT = 87.0
-
-    def bt(beat, base):
-        return base + beat * BB
-
+def cadence(A, FU, T0):
+    """Bach's own final bar (m114) and G-major chord, with Owen's arpeggio on top."""
+    def ct(beat):
+        return T0 + (beat - 452) * BB
+    hold = 4 * BB
     for n in FU:
-        if n["track"] not in (1, 3, 5) or n["start"] >= CUT:
-            continue
-        s, d, p = n["start"], min(n["dur"], CUT - n["start"]), n["pitch"]
-        t, dd = bt(s, E0), d * BB - 24
-        if n["track"] == 5:
-            if s >= 86:
-                continue                                 # replaced by the held D below
-            A.note("pedal", t, dd, p, 88)
-            A.note("pedal", t, dd, p - 12, 70)
-            A.note("bass", t, dd - 10, p, 92)            # bass doubles the pedal from its entry (m14)
-            if s < 69:
-                A.note("gtr", t, dd - 10, p + 12, 82)    # ... and overdrive guitar its subject
-            if s >= 56 and (s % 2 == 0) and d >= 0.5:
-                A.note("timp", t, Q, p if p < P("D3") else p - 12, 84)
-        else:
-            A.note("organ", t, dd, p, 90, human=2)
-            if n["track"] == 3:
-                if 35.5 <= s < 49:
-                    A.note("lead", t, dd, p + 24, 72)    # square lead highlights the tenor subject
-                if 35.5 <= s < 56:
-                    A.note("bass", t, dd - 10, p - 12, 84)
-            if s >= 36 and d >= 1.0:
-                A.note("str", t, dd, p + (12 if n["track"] == 3 else 0), 68)
-    # held D7 half cadence (beats 87-90) under the soprano's "F# G E F# D"
-    hold0, hold1 = bt(CUT, E0), bt(90, E0)
-    A.chord("organ", hold0, hold1 - hold0 - 20, [P("C4"), P("F#4"), P("A4"), P("D5")], 96)
-    A.note("pedal", bt(86, E0), hold1 - bt(86, E0) - 20, P("D3"), 92)
-    A.note("pedal", bt(86, E0), hold1 - bt(86, E0) - 20, P("D2"), 76)
-    A.note("bass", bt(86, E0), hold1 - bt(86, E0) - 20, P("D2"), 96)
-    A.chord("choir", hold0, hold1 - hold0 - 20, [P("D3"), P("A3"), P("C4"), P("F#4"), P("A4"), P("D5")], 80)
-    A.chord("str", hold0, hold1 - hold0 - 20, [P("D4"), P("F#4"), P("C5"), P("D5"), P("F#5")], 76)
-    A.ramp("choir", hold0, hold1, 11, 50, 127)
-    A.ramp("str", hold0, hold1, 11, 70, 127)
-    A.timp_roll(bt(87.5, E0), hold1, P("D3"), 50, 118)
-    # drums per Bach bar (= 32 sixteenths)
-    for b in range(23):
-        t = E0 + b * 32 * S16
-        if b < 4:
-            continue
-        if b < 9:
-            A.drums(t, {CH: "o.x.o.x.o.x.o.x.o.x.o.x.o.x.o.x.", K: "x...............x...............",
-                        RS: "........o...............o......."}, 0.8)
-        elif b < 14:
-            pat = {CH: "x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.", K: "X...........x...X.....x.........",
-                   SN: "........X...............X......."}
-            if b == 9:
-                pat[CR] = "X"
-            if b == 13:
-                pat = {CH: "x.x.x.x.x.x.x.x.x.x.x.x.", K: "X...........x...X.....x.",
-                       SN: "........X...............xxx.", THI: "........................x..x",
-                       TMID: "..........................x.", TLO: "............................xx",
-                       K2: "............................X."}
-            A.drums(t, pat)
-        elif b < 21:
-            A.drums(t, {K: "X...X...X...X...X...X...X...X...", OH: "..x...x...x...x...x...x...x...x.",
-                        CH: "x...x...x...x...x...x...x...x...", CP: "....x.......x.......x.......x...",
-                        CR: "X" if b % 2 == 0 else "", SPL: ("" if b % 2 == 0 else "X")})
-        elif b == 21:
-            A.drums(t, {K: "X...X...X...X...X...X...X...X...", CH: "x.x.x.x.x.x.x.x.",
-                        SN: "....x.......x.....x.x.x.x.x.x.x.", CR: "X"})
-        else:  # b == 22: the D7 hold (half a Bach bar = 16 sixteenths)
-            A.drums(t, {K: "X...X...X...X...", SN: "xxxxxxxxXXXXXXXX", CR: "............X..."}, 0.95)
-
-    # ============================================================ F: climax
-    F0 = bt(90, E0)
-    A.marker(F0, "Climax: U.N. Owen main theme + Bach counter-melody on organ")
-    A.mix(F0, drums=94, lead=106, dbar=74)
-    main_theme(F0, climax=True)
-
-    # ============================================================ G: fugue ending
-    G0 = F0 + 16 * 16 * S16
-    A.marker(G0, "Fugue ending (BWV 542, m106-115)")
-    A.mix(G0, drums=90, lead=96)
-    START, FINAL = 420.0, 456.0
-
-    def gt(beat):
-        return G0 + (beat - START) * BB
-
-    for n in FU:
-        if n["track"] not in (1, 3, 5) or not START <= n["start"] < FINAL + 1:
+        if n["track"] not in (1, 3, 5) or not 452 <= n["start"] < 457:
             continue
         s, d, p = n["start"], n["dur"], n["pitch"]
-        final = s >= FINAL
-        dd = (4 * BB if final else d * BB) - 24
-        t = gt(s)
+        final = s >= 456
+        dd = (hold if final else d * BB) - 24
         if n["track"] == 5:
-            A.note("pedal", t, dd, p, 92)
-            A.note("pedal", t, dd, p - 12, 76)
-            A.note("bass", t, dd - 10, p, 96)
-            A.note("gtr", t, dd - 10, p + 12, 84)
-            if not final and s % 2 == 0:
-                A.note("timp", t, Q, p if p < P("D3") else p - 12, 90)
+            A.note("pedal", ct(s), dd, p, 94)
+            A.note("pedal", ct(s), dd, p - 12, 78)
+            A.note("bass", ct(s), dd, p, 96)
         else:
-            A.note("organ", t, dd, p, 94, human=2)
-            if d >= 1.0 or final:
-                A.note("choir", t, dd, p, 76)
-                A.note("str", t, dd, p + (0 if n["track"] == 1 else 12), 72)
-    # the pedal subject (m110 b2.5) gets the square lead on top
-    for n in FU:
-        if n["track"] == 5 and 437.5 <= n["start"] < 449:
-            A.note("lead", gt(n["start"]), n["dur"] * BB - 24, n["pitch"] + 24, 80)
-    # final G-major chord: everyone
-    tf = gt(FINAL)
-    fin = 4 * BB
-    A.chord("choir", tf, fin, [P("G2"), P("D3"), P("G3"), P("B3"), P("D4"), P("G4"), P("B4")], 90)
-    A.chord("str", tf, fin, [P("G3"), P("B3"), P("D4"), P("G4"), P("B4"), P("D5")], 86)
-    A.chord("brass", tf, fin, [P("G3"), P("D4"), P("G4"), P("B4"), P("D5")], 90)
-    A.chord("lead", tf, fin - Q, [P("B5"), P("D6"), P("G6")], 86)
-    A.chord("dbar", tf, fin - Q, [P("G4"), P("B4"), P("D5")], 74)
-    A.note("bass", tf, fin, P("G1"), 100)
-    A.chord("gtr", tf, fin - Q, [P("G2"), P("D3"), P("G3")], 92)
-    A.chord("hpsi", tf, 2 * Q, [P("G3"), P("B3"), P("D4"), P("G4"), P("B4")], 100)
-    A.note("cele", tf, 3 * Q, P("G6"), 80)
-    A.note("cele", tf, 3 * Q, P("B6"), 70)
+            A.note("organ", ct(s), dd, p, 96, human=2)
+            A.note("choir", ct(s), dd, p, 80)
+            A.note("str", ct(s), dd, p + (12 if n["track"] == 3 else 0), 78)
+    tf = ct(456)
+    A.chord("brass", tf, hold, [P("G3"), P("D4"), P("G4"), P("B4"), P("D5")], 92)
+    A.chord("lead", tf, hold - Q, [P("B5"), P("D6"), P("G6")], 90)
+    A.chord("dbar", tf, hold - Q, [P("G4"), P("B4"), P("D5")], 76)
+    A.chord("gtr", tf, hold - Q, [P("G2"), P("D3"), P("G3")], 92)
+    A.note("bass", tf, hold, P("G1"), 100)
+    for i, nm in enumerate(["B5", "G5", "D5"] * 4):        # Owen's riff, now in G major
+        A.note("cele", tf + i * S16, 3 * S16, P(nm), 86 - 3 * i)
+        A.note("glock", tf + i * S16, 2 * S16, P(nm), 74 - 3 * i)
     A.drums(tf, {K: "X", CR: "X", CR2: "X", CHN: "X"})
-    A.timp_roll(tf, tf + fin - Q, P("G2"), 118, 40, rate=Q // 8)
-    A.ramp("choir", tf, tf + fin, 11, 127, 70)
-    A.ramp("str", tf, tf + fin, 11, 127, 60)
-    # drums for m106-114
-    for b in range(9):
-        t = G0 + b * 32 * S16
-        if b < 7:
-            pat = {K: "X...X...X...X...X...X...X...X...", OH: "..x...x...x...x...x...x...x...x.",
-                   CH: "x...x...x...x...x...x...x...x...", CP: "....x.......x.......x.......x..."}
-            if b in (0, 2, 6):
-                pat[CR] = "X"
-            if b == 4:
-                pat[CR] = "................X"            # pedal subject enters at m110 b2.5
-                pat[CR2] = "................X"
-            if b == 3:
-                pat[SN] = "........................xx.xXXXX"
-            A.drums(t, pat)
-        else:  # m113-114: half time, ritardando
-            A.drums(t, {K: "X.......X.......X.......X.......", SN: "........X...............X.......",
-                        CH: "x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.", CR: "X" if b == 7 else "X...............X",
-                        TLO: ("" if b == 7 else "........................x.x.xxxx"),
-                        TMID: ("" if b == 7 else "........................x.x.....")})
-    # ritardando into the final chord
-    for beat, bpm in ((448, 150), (450, 144), (452, 136), (453, 128), (454, 118), (455, 102),
-                      (455.5, 88), (FINAL, 66)):
-        A.tempo(gt(beat), bpm)
+    A.timp_roll(tf, tf + hold - Q, P("G2"), 116, 40, rate=Q // 8)
+    A.ramp("choir", tf, tf + hold, 11, 127, 70)
+    A.ramp("str", tf, tf + hold, 11, 127, 60)
+    A.drums(T0, {K: "X.......X.......X.......X.......", SN: "........X...............X.......",
+                 CR: "X", TLO: "..........................x.xxxx",
+                 TMID: "........................xx.x...."})
+    for beat, bpm in ((452, 150), (453, 142), (454, 130), (455, 112), (455.5, 94), (456, 66)):
+        A.tempo(ct(beat), bpm)
+    return tf + hold
 
-    mf = A.save(out_path, "BWV 542 x U.N. Owen Was Her?")
-    return A, mf, dict(A=0, B=B0, C=C0, D=D0, E=E0, F=F0, G=G0, end=tf + fin)
+
+# ================================================================ build
+def build(fugue_path, owen_path, out_path):
+    A = Arrangement()
+    FU = read_notes(fugue_path)
+    OW = read_notes(owen_path)
+
+    # sanity check: the hard-coded subject matches the edition (top voice of the manuals)
+    top = {}
+    for n in FU:
+        if n["track"] == 1 and n["start"] < 16:
+            top[n["start"]] = max(top.get(n["start"], 0), n["pitch"])
+    for b, d, nm in SUBJECT:
+        assert top.get(b) == P(nm), (b, nm, top.get(b))
+
+    owen_theme = owen_extract(OW, 6, 312, 440, -7)       # main theme A + A', G minor
+    T = 0
+    A.tempo(0, 155)
+
+    # 1. intro: Owen's 5/4 riff + subject head
+    A.marker(T, "Intro: Owen 5/4 riff + Bach subject head")
+    A.timesig(T, 5)
+    A.mix(T, drums=84)
+    riff(A, OW, T, 8, full=False)
+    T += 8 * 20 * S16
+    A.timesig(T, 4)
+
+    def unit(label, tr, **opt):
+        nonlocal T
+        A.marker(T, label)
+        opt["owen_notes"] = owen_theme
+        quodlibet(A, T, tr, opt)
+        T += 32 * Q
+
+    # 2. Q1: subject on organ, Owen on glockenspiel/celesta, light
+    A.mix(T, drums=76, organ=92, glock=100, cele=96)
+    unit("Q1 (G minor): subject on organ + Owen on bells", 0,
+         subject=[("organ", 0, 94), ("hpsi", 0, 70)],
+         owen=[("glock", 0, 96, 70), ("cele", 0, 84, 0)],
+         pad=[("str", 0, 58)], bass="long", drums="light")
+    # 3. Q2: the fugue's answer in D minor + Owen in its original key
+    A.mix(T, drums=84, lead=86, organ=104)
+    unit("Q2 (D minor): answer on organ + Owen in original key", -5,
+         subject=[("organ", 0, 96)],
+         owen=[("lead", 0, 100, 82), ("dbar", 0, 80, 66)],
+         pad=[("str", 0, 66)], bass="roots", drums="groove", tonal_answer=True, final_major=True)
+    # 4. Q3: subject in the bass
+    A.mix(T, drums=86, lead=96, organ=84)
+    unit("Q3 (G minor): subject in the bass + Owen on lead", 0,
+         subject=[("pedal", -24, 96), ("pedal", -12, 70), ("bass", -24, 98), ("gtr", -12, 64)], codetta="bass",
+         owen=[("lead", 0, 102, 84), ("dbar", 0, 82, 68)],
+         pad=[("organ", 0, 74), ("str", 12, 62)], drums="groove", timp=True)
+    # 5. riff reprise
+    A.marker(T, "Riff reprise")
+    A.timesig(T, 5)
+    A.mix(T, drums=86, organ=100)
+    riff(A, OW, T, 4, full=True)
+    T += 4 * 20 * S16
+    A.timesig(T, 4)
+    # 6. bridge
+    A.marker(T, "Bridge: Owen chromatic theme + subject head")
+    A.mix(T, drums=86, lead=96, organ=96)
+    bridge(A, OW, T)
+    T += 32 * Q
+    # 7. Q4: swap - subject on the synth lead, Owen on the organ
+    A.mix(T, drums=86, lead=92, organ=100, cele=88)
+    unit("Q4 (G minor): swapped - subject on synth, Owen on organ", 0,
+         subject=[("lead", 0, 96), ("dbar", 0, 78)],
+         owen=[("organ", 0, 92, 78), ("cele", 0, 70, 0)],
+         pad=[("str", 0, 66)], bass="roots", drums="groove")
+    # 8. Q5: climax
+    A.mix(T, drums=90, lead=94, organ=112, glock=84)
+    A.ramp("choir", T, T + 16 * Q, 11, 70, 120)
+    unit("Q5 (G minor): climax - subject on organ + guitar, Owen on lead", 0,
+         subject=[("organ", 0, 100), ("gtr", 0, 74)],
+         owen=[("lead", 0, 106, 88), ("dbar", 0, 84, 70), ("glock", 0, 70, 0)],
+         pad=[("choir", 0, 74), ("str", 12, 66), ("brass", 0, 56)], bass="roots",
+         pedal_roots=True, drums="big", timp=True)
+    # 9. Q6: finale, subject in the bass again under everything
+    A.mix(T, drums=90, lead=98, organ=80)
+    unit("Q6 (G minor): finale - subject in the bass, Owen on top", 0,
+         subject=[("pedal", -24, 100), ("pedal", -12, 74), ("bass", -24, 100), ("gtr", -12, 76)], codetta="bass",
+         owen=[("lead", 0, 108, 90), ("dbar", 0, 86, 72), ("glock", 0, 72, 0)],
+         pad=[("organ", 0, 84), ("choir", 0, 76), ("str", 12, 70)], drums="big", timp=True)
+    # 10. Bach's final cadence
+    A.marker(T, "Bach's final cadence (m114-115)")
+    A.mix(T, drums=92, lead=100, organ=104)
+    end = cadence(A, FU, T)
+
+    mf = A.save(out_path, "BWV 542 x U.N. Owen Was Her? (quodlibet)")
+    return A, mf, end
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 5:
+    if len(sys.argv) != 4:
         sys.exit(__doc__)
-    arr, mf, marks = build(*sys.argv[1:])
-    print(f"wrote {sys.argv[4]}: {len(arr.notes)} notes, {mf.length:.1f} s")
-    for k, v in marks.items():
-        print(f"  {k}: tick {v}")
+    arr, mf, end = build(*sys.argv[1:])
+    print(f"wrote {sys.argv[3]}: {len(arr.notes)} notes, {mf.length:.1f} s")
