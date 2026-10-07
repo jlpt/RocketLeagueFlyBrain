@@ -1,36 +1,46 @@
 # BWV 542 × U.N. Owen Was Her?
 
-A MIDI quodlibet: the fugue subject of J. S. Bach's *Fantasia and Fugue in G minor*
-(BWV 542, "Great") and the main theme of ZUN's *U.N. Owen Was Her?* (Touhou 6)
-**playing at the same time**, over a new chord progression that fits both.
+New melodies fused from two tunes: the fugue subject of J. S. Bach's *Fantasia and Fugue
+in G minor* (BWV 542, "Great") and ZUN's *U.N. Owen Was Her?* (Touhou 6). The tunes are not
+played on top of each other. Each theme is **one line** that turns from Bach into Owen and
+back, with one shared rhythm and one chord progression.
 
-`bwv542_x_un_owen_was_her.mid` is a General MIDI type-1 file with 14 instrument
-tracks and section markers. It runs about 2:05.
+`bwv542_x_un_owen_was_her.mid` is a General MIDI type-1 file with 14 instrument tracks
+and section markers. It runs about 2:05.
 
-## How the two tunes fit together
+## The fused themes (G minor, 155 bpm)
 
-- Owen is moved from D minor to G minor (Bach's key) and stays at its original 155 bpm.
-  The fugue plays at half time (♩≈77), so one Bach 16th equals one Owen 8th. Owen's
-  8-bar main theme then lasts exactly as long as the fugue subject.
-- Owen comes in half a beat after the subject's opening D. Under them runs one chord
-  per Bach beat: Gm Gm | D7♯5 C/D | Cm F | B♭ E♭ | D7sus4 D | Gm C7 | C9 F | Gm.
-  That's Bach's circle-of-fifths sequence plus Owen's Dorian IV chord.
-- Every note of both tunes lands on a chord tone or a short passing note. A checker
-  confirms there are no minor-2nd or minor-9th clashes between any two parts, down to
-  single 16ths. Pad and harmony notes that would rub against a passing note are dropped.
+Owen is moved from D minor to G minor. Bach's fragments run at half time, so his 16ths
+become 8ths and move at the same speed as Owen's line.
+
+- **Theme A (verse).** Bach's opening turn, *D | B♭ C A B♭ G G′*, ends on G. That's
+  exactly the note Owen's theme starts on, so the line carries straight on with Owen's
+  bars 2–4. The answering phrase starts with Owen's bar 1, puts Bach's *F♯ G E F♯ D G D*
+  where Owen's bar 2 was, and finishes with Owen's turn down to G.
+- **Theme B (chorus).** Owen's falling-third chromatic line (*D B♭ C♯ A | E C♯ C E♭*)
+  runs into Bach's falling-third sequence (*D E♭ C D B♭ E♭ B♭ | C A D D′*). This happens
+  twice, then Bach's turn makes a cadence on G.
+- **Theme C (bridge).** Bach's rising run climbs into Owen's bars 1–3, then hands over
+  to Bach's sequence, which lands on D7.
+- **Riff.** Owen's 5/4 intro arpeggio, with every other stab replaced by Bach's turn,
+  as one harpsichord line.
+
+Every Bach and Owen bar in the themes is a literal fragment of the source. The script
+checks each one against the source MIDI files when it runs. A checker confirms there
+are no minor-2nd or minor-9th clashes between the melody and the accompaniment.
 
 | Time | Section |
 |------|---------|
-| 0:00 | Owen's 5/4 intro riff, with the fugue subject's opening (D \| B♭ C A B♭ G G′) laid into it on organ |
-| 0:15 | **Both tunes:** Bach's subject on organ, Owen on glockenspiel and celesta |
-| 0:28 | **Both tunes in D minor** (Owen's original key): Bach's fugue *answer* on organ, Owen on square lead |
-| 0:40 | **Both tunes:** Bach's subject as the bass line, Owen's theme on top |
-| 0:53 | Riff reprise, again with the subject's opening |
-| 1:00 | Owen's chromatic theme against the subject's opening, repeated over Owen's chords |
-| 1:13 | **Both tunes, instruments swapped:** Bach on the synth lead, Owen on the organ |
-| 1:25 | **Both tunes, climax:** organ and guitar on Bach, lead on Owen, choir, full kit |
-| 1:38 | **Both tunes, finale:** Bach's subject in the pedal and bass under Owen's theme |
-| 1:50 | Bach's own final cadence (m114–115) to G major, with Owen's arpeggio over the last chord |
+| 0:00 | Fused riff (Owen's arpeggio + Bach's turn), building up |
+| 0:15 | Theme A on music box (celesta + glockenspiel) |
+| 0:28 | Theme A on synth lead in thirds, with the band |
+| 0:40 | Theme B, the chorus |
+| 0:53 | Fused riff interlude |
+| 1:00 | Theme A in D minor (Owen's original key) on organ, as a baroque episode |
+| 1:13 | Theme C, the bridge, building up |
+| 1:25 | Theme B, climax: choir, guitar, full kit |
+| 1:38 | Theme A, finale |
+| 1:50 | Bach's own final cadence (m114–115) to G major, with Owen's arpeggio over it |
 
 ## Regenerating
 
@@ -42,7 +52,6 @@ python3 make_mashup.py bwv542-a4-1.mid "15. U.N. Owen was her (ZUN).mid" out.mid
 - `bwv542-a4-1.mid` is the fugue MIDI from the
   [Mutopia Project edition](https://www.mutopiaproject.org/ftp/BachJS/BWV542/bwv542/)
   (public domain).
-- ZUN's MIDI is used only as a reference for Owen's melody and riff. It is not bundled
-  here. All the harmony and orchestration is new.
+- ZUN's MIDI is used only to verify the Owen fragments. It is not bundled here.
 
 *U.N. Owen Was Her?* © ZUN / Team Shanghai Alice. This is a non-commercial fan arrangement.
