@@ -49,7 +49,7 @@ const controls = new OrbitControls(camera, canvas);
 controls.target.set(0, 1.0, 0);
 controls.enableDamping = true;
 controls.minDistance = 1.6;
-controls.maxDistance = 7;
+controls.maxDistance = 10;
 controls.maxPolarAngle = Math.PI * 0.55;
 controls.update();
 
@@ -154,7 +154,7 @@ const rainPos = new Float32Array(RAIN_COUNT * 3);
 for (let i = 0; i < RAIN_COUNT; i++) {
   rainPos[i * 3] = (Math.random() - 0.5) * 16;
   rainPos[i * 3 + 1] = Math.random() * 9;
-  rainPos[i * 3 + 2] = (Math.random() - 0.5) * 10 - 1;
+  rainPos[i * 3 + 2] = -1 - Math.random() * 6; // behind the unit, away from the camera
 }
 const rainGeo = new THREE.BufferGeometry();
 rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
@@ -396,8 +396,14 @@ function frame() {
 }
 frame();
 
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+// Pull the camera back on narrow screens so the whole unit stays in frame; hide the price tag there.
+function fitView() {
+  const aspect = window.innerWidth / window.innerHeight;
+  camera.aspect = aspect;
+  camera.position.z = Math.max(4.4, 1.0 / (0.2867 * aspect));
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-});
+  labelSprite.visible = aspect > 0.9;
+}
+window.addEventListener('resize', fitView);
+fitView();
